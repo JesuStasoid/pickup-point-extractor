@@ -7,10 +7,6 @@ name: Build
 on:
   workflow_dispatch:
   push:
-    # The branch filter is only so this private repo can prove the workflow
-    # before it is on main. Tags stay in the same push filter (GitHub ORs them).
-    branches:
-      - "cursor/import-and-ci-builds-69e1"
     tags:
       - "v*"
 
@@ -190,7 +186,7 @@ jobs:
           - \`Pick-up point extractor v1.0.dmg\` — macOS universal2 (Apple Silicon and Intel). Ad-hoc signed, no Developer ID. First launch after download: Control-click the app and choose Open.
           - \`Pick-up point extractor v1.0.exe\` — Windows onefile, no console.
 
-          Minimum macOS is 10.13 on Intel and 11 on Apple Silicon.
+          Minimum macOS is 11 (both Intel and Apple Silicon).
           EOF
           )
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then

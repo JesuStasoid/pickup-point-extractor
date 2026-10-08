@@ -77,7 +77,7 @@ One `.dmg` is a universal2 app (Apple Silicon and Intel). pypdf is pure Python, 
 
 The app is **ad-hoc signed** (`codesign --sign -`). There is no Apple Developer ID, so Gatekeeper will block the first open after the `.dmg` is downloaded. Control-click **Pick-up point extractor** and choose **Open**, then Open again in the dialog. After that it launches normally. The same unsigned-download warning on Windows is SmartScreen; the exe is not Authenticode-signed.
 
-Built with the python.org 3.13 universal2 installer, the app's minimum macOS is **10.13** on Intel and **11** on Apple Silicon. python.org warns that on **macOS 27** Tk file dialogs can hang; CI builds on macOS 26.
+The CI build (Python 3.13.15, Tk 8.6.18) has Mach-O `minos` **11.0** on both the Intel and Apple Silicon slices, and the script writes that into `LSMinimumSystemVersion`. python.org warns that on **macOS 27** Tk file dialogs can hang; CI builds on macOS 26.
 
 Do not add `email` or `urllib` to the PyInstaller excludes on either platform. On Python 3.14 (Windows), `Path.as_uri()` (used to open the .dbpr read-only) imports them.
 

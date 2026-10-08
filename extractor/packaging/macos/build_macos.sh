@@ -127,6 +127,14 @@ plist_set CFBundleVersion string "$VERSION"
 plist_set CFBundleName string "$NAME"
 plist_set CFBundleDisplayName string "$NAME"
 plist_set NSHighResolutionCapable bool true
+# The Mach-O minos is what macOS actually enforces. Publish the same floor in
+# Info.plist (python.org 3.13 universal2 is 11.0 on both slices).
+if command -v vtool >/dev/null 2>&1; then
+  MINOS="$(vtool -show-build "$MAIN" | awk '/minos/{print $2; exit}')"
+  if [[ -n "${MINOS}" ]]; then
+    plist_set LSMinimumSystemVersion string "$MINOS"
+  fi
+fi
 
 # Ad-hoc, inside-out. No Developer ID and no timestamp server.
 while IFS= read -r -d '' f; do
