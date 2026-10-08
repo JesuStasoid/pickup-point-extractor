@@ -1,0 +1,16 @@
+_build/
+build/
+dist/
+*.exe
+*.app
+*.dmg
+*.spec
+__pycache__/
+*.pyc
+.venv/
+venv/
+# client data / outputs
+*.dbpr
+*.pdf
+*_hoist_picks*.csv
+*_extractor_error.log

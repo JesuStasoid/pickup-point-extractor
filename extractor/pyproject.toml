@@ -1,0 +1,16 @@
+[project]
+name = "pickup-point-extractor"
+version = "1.0.0"
+description = "Extract flown hoist pick-up points from d&b ArrayCalc projects (.dbpr) and L-Acoustics Soundvision reports (.pdf) to CSV"
+requires-python = ">=3.10"
+dependencies = ["pypdf>=6.0"]
+
+[project.optional-dependencies]
+build = ["pyinstaller>=6.16"]
+
+[project.gui-scripts]
+pickup-point-extractor = "app:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+py-modules = ["app", "core", "version", "_diag", "extract_arraycalc_hoists", "extract_soundvision_hoists"]

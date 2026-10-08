@@ -1,0 +1,203 @@
+# One macOS job, not an arm64+Intel matrix. The .dmg is universal2, built on
+# the Apple Silicon runner from python.org's fat Python + Tcl/Tk 8.6.
+# macos-26 is pinned: macos-latest may move to macOS 27, where python.org
+# warns that Tk file dialogs hang.
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    # The branch filter is only so this private repo can prove the workflow
+    # before it is on main. Tags stay in the same push filter (GitHub ORs them).
+    branches:
+      - "cursor/import-and-ci-builds-69e1"
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: macOS universal2 dmg
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        id: setup-python
+        with:
+          python-version: "3.13"
+
+      - name: Select a universal2 Python with Tk 8.6
+        run: |
+          set -euo pipefail
+          is_fat() {
+            local exe archs
+            exe="$("$1" -c 'import sys; print(sys.executable)')"
+            archs="$(lipo -archs "$exe" 2>/dev/null || true)"
+            echo "$1 -> $exe [$archs]"
+            printf '%s\n' $archs | grep -qx arm64 && printf '%s\n' $archs | grep -qx x86_64
+          }
+          if is_fat python3; then
+            echo "PYTHON=python3" >> "$GITHUB_ENV"
+          else
+            ver="$(python3 -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])')"
+            echo "setup-python $ver is not universal2; installing the python.org pkg"
+            curl -fsSL -o /tmp/python.pkg "https://www.python.org/ftp/python/${ver}/python-${ver}-macos11.pkg"
+            sudo installer -pkg /tmp/python.pkg -target /
+            py="/Library/Frameworks/Python.framework/Versions/3.13/bin/python3"
+            cert="/Applications/Python 3.13/Install Certificates.command"
+            if [[ -x "$cert" ]]; then
+              "$cert" || true
+            fi
+            is_fat "$py"
+            echo "PYTHON=$py" >> "$GITHUB_ENV"
+          fi
+
+      - name: Tests
+        working-directory: extractor
+        run: |
+          set -euo pipefail
+          "$PYTHON" -m pip install --disable-pip-version-check -q -r requirements.txt
+          "$PYTHON" tests/test_core.py
+          "$PYTHON" tests/soundvision_parser_checks.py
+          "$PYTHON" tests/check_window_bmp.py --self-test
+
+      - name: Build dmg
+        working-directory: extractor
+        run: bash packaging/macos/build_macos.sh
+
+      - name: Frozen smoke test and window render
+        working-directory: extractor
+        run: |
+          set -euo pipefail
+          dmg="Pick-up point extractor v1.0.dmg"
+          mnt="$(mktemp -d)"
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mnt"
+          cleanup() { hdiutil detach "$mnt" >/dev/null 2>&1 || hdiutil detach "$mnt" -force >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          app="$mnt/Pick-up point extractor.app"
+          bin="$app/Contents/MacOS/Pick-up point extractor"
+          "$PYTHON" tests/smoke_frozen.py --exe "$bin"
+          mkdir -p "$RUNNER_TEMP/ppe-proof"
+          bash tests/smoke_macos_window.sh "$app" "$RUNNER_TEMP/ppe-proof/window.png"
+          ls -lh "$dmg" "$RUNNER_TEMP/ppe-proof/window.png"
+          {
+            echo "### macOS"
+            echo ""
+            echo "- dmg: \`$(stat -f%z "$dmg")\` bytes"
+            echo "- app binary: \`$(lipo -archs "$bin")\`"
+            cat _build/build-info.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Pick-up point extractor v1.0.dmg
+          path: "extractor/Pick-up point extractor v1.0.dmg"
+          if-no-files-found: error
+          compression-level: 0
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: macos-window.png
+          path: ${{ runner.temp }}/ppe-proof/window.png
+          if-no-files-found: warn
+          compression-level: 0
+
+  windows:
+    name: Windows exe
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Tests
+        working-directory: extractor
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check -q -r requirements.txt
+          python tests/test_core.py
+          python tests/soundvision_parser_checks.py
+          python tests/check_window_bmp.py --self-test
+
+      - name: Build exe
+        working-directory: extractor
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File .\build_windows.ps1
+
+      - name: Frozen smoke test
+        working-directory: extractor
+        shell: pwsh
+        run: |
+          python tests/smoke_frozen.py --exe ".\Pick-up point extractor v1.0.exe"
+          $item = Get-Item ".\Pick-up point extractor v1.0.exe"
+          "exe bytes: $($item.Length)"
+          @"
+          ### Windows
+
+          - exe: ``$($item.Length)`` bytes
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Pick-up point extractor v1.0.exe
+          path: "extractor/Pick-up point extractor v1.0.exe"
+          if-no-files-found: error
+          compression-level: 0
+
+  release:
+    name: GitHub Release
+    needs: [macos, windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: "Pick-up point extractor v1.0.*"
+          path: release-assets
+          merge-multiple: true
+
+      - name: Attach dmg and exe to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(release-assets/*.dmg release-assets/*.exe)
+          if [[ ${#files[@]} -lt 2 ]]; then
+            echo "expected the dmg and the exe, found: ${files[*]:-<none>}" >&2
+            ls -lR release-assets >&2 || true
+            exit 1
+          fi
+          ls -lh "${files[@]}"
+          notes=$(cat <<EOF
+          Pick-up point extractor ${GITHUB_REF_NAME}
+
+          - \`Pick-up point extractor v1.0.dmg\` — macOS universal2 (Apple Silicon and Intel). Ad-hoc signed, no Developer ID. First launch after download: Control-click the app and choose Open.
+          - \`Pick-up point extractor v1.0.exe\` — Windows onefile, no console.
+
+          Minimum macOS is 10.13 on Intel and 11 on Apple Silicon.
+          EOF
+          )
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${files[@]}" \
+              --title "$GITHUB_REF_NAME" \
+              --notes "$notes" \
+              --verify-tag
+          fi

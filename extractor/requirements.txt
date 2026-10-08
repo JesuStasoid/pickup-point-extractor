@@ -1,0 +1,2 @@
+# Runtime dependency (the rest is the Python standard library: tkinter, sqlite3, csv)
+pypdf==6.19.0
