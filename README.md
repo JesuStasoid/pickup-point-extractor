@@ -1,0 +1,1 @@
+# pickup-point-extractor
