@@ -104,37 +104,69 @@ jobs:
           Video: https://www.youtube.com/watch?v=_y_PgrNg_jc
           EOF
 
+          # GitHub's upload API replaces spaces in asset names with periods.
+          # The label is what the release page shows in place of that name, so
+          # each label is the real filename ("Pick-up point extractor v1.0.exe").
+          labeled=()
+          for f in "${assets[@]}"; do
+            labeled+=("${f}#$(basename "$f")")
+          done
+
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release edit "$tag" --title "$title" --notes-file "$notes"
             mapfile -t existing < <(gh release view "$tag" --json assets --jq '.assets[].name')
             for name in "${existing[@]}"; do
               gh release delete-asset "$tag" "$name" --yes
             done
-            gh release upload "$tag" "${assets[@]}"
+            gh release upload "$tag" "${labeled[@]}"
           elif [[ "${GITHUB_REF}" == "refs/tags/${tag}" ]]; then
-            gh release create "$tag" "${assets[@]}" \
+            gh release create "$tag" "${labeled[@]}" \
               --title "$title" \
               --notes-file "$notes" \
               --verify-tag
           else
-            gh release create "$tag" "${assets[@]}" \
+            gh release create "$tag" "${labeled[@]}" \
               --title "$title" \
               --notes-file "$notes" \
               --target "${GITHUB_SHA}"
           fi
 
-          gh release view "$tag" --json name,tagName,url,assets \
-            --jq '{name,tagName,url,assets:[.assets[].name] | sort}' > "${RUNNER_TEMP}/release.json"
-          cat "${RUNNER_TEMP}/release.json"
-          jq -r '.assets[]' "${RUNNER_TEMP}/release.json" | sort > "${RUNNER_TEMP}/published.txt"
-          if ! cmp -s "${RUNNER_TEMP}/published.txt" "${RUNNER_TEMP}/expected.txt"; then
-            echo "published assets are not exactly the six expected files" >&2
-            diff -u "${RUNNER_TEMP}/expected.txt" "${RUNNER_TEMP}/published.txt" >&2 || true
-            exit 1
-          fi
-          if [[ "$(jq -r .name "${RUNNER_TEMP}/release.json")" != "$title" ]]; then
-            echo "release title is not ${title}" >&2
-            exit 1
-          fi
-          url="$(jq -r .url "${RUNNER_TEMP}/release.json")"
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${tag}" > "${RUNNER_TEMP}/release.json"
+          python3 - "${RUNNER_TEMP}/release.json" "$title" <<'PY'
+          import json, sys
+          rel = json.load(open(sys.argv[1]))
+          title = sys.argv[2]
+          expected = [
+              "HoistPoint.dwg",
+              "Pick-up point extractor v1.0.dmg",
+              "Pick-up point extractor v1.0.exe",
+              "PlaceArrayCalcHoists.lsp",
+              "PlaceArrayCalcHoistsV3.py",
+              "Sound_Hoist_Class.vwx",
+          ]
+          if rel.get("name") != title:
+              raise SystemExit(f"release title is {rel.get('name')!r}, expected {title!r}")
+          assets = rel.get("assets") or []
+          if len(assets) != 6:
+              raise SystemExit(f"expected 6 assets, found {len(assets)}: {assets}")
+          shown = sorted((a.get("label") or a.get("name") or "") for a in assets)
+          if shown != expected:
+              raise SystemExit("release labels are not the six filenames:\n" + "\n".join(shown))
+          forbidden = ("extract_arraycalc_hoists.py", "extract_soundvision_hoists.py", "app.py", "core.py")
+          for asset in assets:
+              for field in ("name", "label"):
+                  value = asset.get(field) or ""
+                  if value in forbidden or value.startswith("extract_"):
+                      raise SystemExit(f"extractor script published as {field}={value}")
+          print(json.dumps({
+              "name": rel["name"],
+              "tag": rel["tag_name"],
+              "url": rel["html_url"],
+              "assets": [
+                  {"name": a["name"], "label": a.get("label") or ""}
+                  for a in assets
+              ],
+          }, indent=2))
+          PY
+          url="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["html_url"])' "${RUNNER_TEMP}/release.json")"
           echo "Release: ${url}" >> "$GITHUB_STEP_SUMMARY"
