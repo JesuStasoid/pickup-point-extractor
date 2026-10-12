@@ -11,7 +11,7 @@ VSVersionInfo(
         StringStruct('FileDescription', 'Pick-up point extractor'),
         StringStruct('FileVersion', '1.0.0'),
         StringStruct('InternalName', 'Pick-up point extractor'),
-        StringStruct('OriginalFilename', 'Pick-up point extractor v1.0.exe'),
+        StringStruct('OriginalFilename', 'Pick-up_point_extractor_v1.0.exe'),
         StringStruct('ProductName', 'Pick-up point extractor'),
         StringStruct('ProductVersion', '1.0.0')])]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])

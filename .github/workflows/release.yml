@@ -32,7 +32,7 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          pattern: "Pick-up point extractor v1.0.*"
+          pattern: "Pick-up_point_extractor_v1.0.*"
           path: dist
           merge-multiple: true
 
@@ -49,20 +49,26 @@ jobs:
           notes="${RUNNER_TEMP}/release-notes.md"
           mkdir -p "$stage"
 
-          cp "dist/Pick-up point extractor v1.0.exe" "$stage/"
-          cp "dist/Pick-up point extractor v1.0.dmg" "$stage/"
+          exe_name="Pick-up_point_extractor_v1.0.exe"
+          dmg_name="Pick-up_point_extractor_v1.0.dmg"
+          cp "dist/${exe_name}" "$stage/"
+          cp "dist/${dmg_name}" "$stage/"
           cp "vectorworks/PlaceArrayCalcHoistsV3.py" "$stage/"
           cp "vectorworks/Sound_Hoist_Class.vwx" "$stage/"
           cp "autocad/PlaceArrayCalcHoists.lsp" "$stage/"
           cp "autocad/HoistPoint.dwg" "$stage/"
 
           assets=(
-            "$stage/Pick-up point extractor v1.0.exe"
-            "$stage/Pick-up point extractor v1.0.dmg"
+            "$stage/${exe_name}"
+            "$stage/${dmg_name}"
             "$stage/PlaceArrayCalcHoistsV3.py"
             "$stage/Sound_Hoist_Class.vwx"
             "$stage/PlaceArrayCalcHoists.lsp"
             "$stage/HoistPoint.dwg"
+          )
+          app_assets=(
+            "$stage/${exe_name}"
+            "$stage/${dmg_name}"
           )
           if [[ ${#assets[@]} -ne 6 ]]; then
             echo "internal error: asset list is not 6" >&2
@@ -83,8 +89,8 @@ jobs:
           find "$stage" -type f -printf '%f\n' | sort > "${RUNNER_TEMP}/staged.txt"
           cat > "${RUNNER_TEMP}/expected.txt" <<'EOF'
           HoistPoint.dwg
-          Pick-up point extractor v1.0.dmg
-          Pick-up point extractor v1.0.exe
+          Pick-up_point_extractor_v1.0.dmg
+          Pick-up_point_extractor_v1.0.exe
           PlaceArrayCalcHoists.lsp
           PlaceArrayCalcHoistsV3.py
           Sound_Hoist_Class.vwx
@@ -104,31 +110,49 @@ jobs:
           Video: https://www.youtube.com/watch?v=_y_PgrNg_jc
           EOF
 
-          # GitHub's upload API replaces spaces in asset names with periods.
-          # The label is what the release page shows in place of that name, so
-          # each label is the real filename ("Pick-up point extractor v1.0.exe").
-          labeled=()
-          for f in "${assets[@]}"; do
-            labeled+=("${f}#$(basename "$f")")
-          done
+          # Underscores stay in the download name. The label is the same string.
+          label_of() {
+            local f
+            for f in "$@"; do
+              printf '%s#%s\n' "$f" "$(basename "$f")"
+            done
+          }
+          mapfile -t labeled_all < <(label_of "${assets[@]}")
+          mapfile -t labeled_apps < <(label_of "${app_assets[@]}")
 
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release edit "$tag" --title "$title" --notes-file "$notes"
-            mapfile -t existing < <(gh release view "$tag" --json assets --jq '.assets[].name')
-            for name in "${existing[@]}"; do
+            # Remember the four placement assets. Only the exe and dmg are replaced.
+            gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${tag}" \
+              --jq '.assets[] | select((.name | endswith(".exe") or endswith(".dmg")) | not) | "\(.id) \(.name)"' \
+              | sort > "${RUNNER_TEMP}/kept-before.txt"
+            mapfile -t doomed < <(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${tag}" \
+              --jq '.assets[] | select(.name | endswith(".exe") or endswith(".dmg")) | .name')
+            for name in "${doomed[@]}"; do
               gh release delete-asset "$tag" "$name" --yes
             done
-            gh release upload "$tag" "${labeled[@]}"
+            gh release upload "$tag" "${labeled_apps[@]}"
           elif [[ "${GITHUB_REF}" == "refs/tags/${tag}" ]]; then
-            gh release create "$tag" "${labeled[@]}" \
+            gh release create "$tag" "${labeled_all[@]}" \
               --title "$title" \
               --notes-file "$notes" \
               --verify-tag
           else
-            gh release create "$tag" "${labeled[@]}" \
+            gh release create "$tag" "${labeled_all[@]}" \
               --title "$title" \
               --notes-file "$notes" \
               --target "${GITHUB_SHA}"
+          fi
+
+          if [[ -f "${RUNNER_TEMP}/kept-before.txt" ]]; then
+            gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${tag}" \
+              --jq '.assets[] | select((.name | endswith(".exe") or endswith(".dmg")) | not) | "\(.id) \(.name)"' \
+              | sort > "${RUNNER_TEMP}/kept-after.txt"
+            if ! cmp -s "${RUNNER_TEMP}/kept-before.txt" "${RUNNER_TEMP}/kept-after.txt"; then
+              echo "placement assets were replaced; they must stay untouched" >&2
+              diff -u "${RUNNER_TEMP}/kept-before.txt" "${RUNNER_TEMP}/kept-after.txt" >&2 || true
+              exit 1
+            fi
           fi
 
           gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${tag}" > "${RUNNER_TEMP}/release.json"
@@ -138,8 +162,8 @@ jobs:
           title = sys.argv[2]
           expected = [
               "HoistPoint.dwg",
-              "Pick-up point extractor v1.0.dmg",
-              "Pick-up point extractor v1.0.exe",
+              "Pick-up_point_extractor_v1.0.dmg",
+              "Pick-up_point_extractor_v1.0.exe",
               "PlaceArrayCalcHoists.lsp",
               "PlaceArrayCalcHoistsV3.py",
               "Sound_Hoist_Class.vwx",
@@ -149,9 +173,12 @@ jobs:
           assets = rel.get("assets") or []
           if len(assets) != 6:
               raise SystemExit(f"expected 6 assets, found {len(assets)}: {assets}")
-          shown = sorted((a.get("label") or a.get("name") or "") for a in assets)
-          if shown != expected:
-              raise SystemExit("release labels are not the six filenames:\n" + "\n".join(shown))
+          names = sorted(a.get("name") or "" for a in assets)
+          labels = sorted(a.get("label") or "" for a in assets)
+          if names != expected:
+              raise SystemExit("download names are not the six filenames:\n" + "\n".join(names))
+          if labels != expected:
+              raise SystemExit("labels are not the six filenames:\n" + "\n".join(labels))
           forbidden = ("extract_arraycalc_hoists.py", "extract_soundvision_hoists.py", "app.py", "core.py")
           for asset in assets:
               for field in ("name", "label"):

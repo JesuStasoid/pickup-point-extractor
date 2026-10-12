@@ -3,7 +3,7 @@
   in a temp folder, compares the CSVs byte-for-byte with reference CSVs and
   checks that broken inputs fail cleanly.
 
-  .\tests\test_frozen_windows.ps1 -Exe "...\Pick-up point extractor v1.0.exe" `
+  .\tests\test_frozen_windows.ps1 -Exe "...\Pick-up_point_extractor_v1.0.exe" `
       -Sample "a.dbpr=ref_a.csv","b.pdf=ref_b.csv"
 #>
 param(

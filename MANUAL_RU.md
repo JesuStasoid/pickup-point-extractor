@@ -12,8 +12,8 @@
 
 | Файл | Назначение |
 |---|---|
-| `Pick-up point extractor v1.0.exe` | Экстрактор для Windows |
-| `Pick-up point extractor v1.0.dmg` | Экстрактор для macOS (Apple Silicon и Intel, macOS 11+) |
+| `Pick-up_point_extractor_v1.0.exe` | Экстрактор для Windows |
+| `Pick-up_point_extractor_v1.0.dmg` | Экстрактор для macOS (Apple Silicon и Intel, macOS 11+) |
 | `PlaceArrayCalcHoistsV3.py` | Скрипт расстановки для Vectorworks 2026 |
 | `Sound_Hoist_Class.vwx` | Стиль data tag «Sound_Hoist» для скрипта Vectorworks |
 | `PlaceArrayCalcHoists.lsp` | Скрипт расстановки для AutoCAD, Windows и Mac (команды `ACHOISTS`, `ACHOISTS_CLI`) |

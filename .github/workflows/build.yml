@@ -73,7 +73,7 @@ jobs:
         working-directory: extractor
         run: |
           set -euo pipefail
-          dmg="Pick-up point extractor v1.0.dmg"
+          dmg="Pick-up_point_extractor_v1.0.dmg"
           mnt="$(mktemp -d)"
           hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mnt"
           cleanup() { hdiutil detach "$mnt" >/dev/null 2>&1 || hdiutil detach "$mnt" -force >/dev/null 2>&1 || true; }
@@ -94,8 +94,8 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: Pick-up point extractor v1.0.dmg
-          path: "extractor/Pick-up point extractor v1.0.dmg"
+          name: Pick-up_point_extractor_v1.0.dmg
+          path: "extractor/Pick-up_point_extractor_v1.0.dmg"
           if-no-files-found: error
           compression-level: 0
 
@@ -136,8 +136,8 @@ jobs:
         working-directory: extractor
         shell: pwsh
         run: |
-          python tests/smoke_frozen.py --exe ".\Pick-up point extractor v1.0.exe"
-          $item = Get-Item ".\Pick-up point extractor v1.0.exe"
+          python tests/smoke_frozen.py --exe ".\Pick-up_point_extractor_v1.0.exe"
+          $item = Get-Item ".\Pick-up_point_extractor_v1.0.exe"
           "exe bytes: $($item.Length)"
           @"
           ### Windows
@@ -147,7 +147,7 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: Pick-up point extractor v1.0.exe
-          path: "extractor/Pick-up point extractor v1.0.exe"
+          name: Pick-up_point_extractor_v1.0.exe
+          path: "extractor/Pick-up_point_extractor_v1.0.exe"
           if-no-files-found: error
           compression-level: 0
