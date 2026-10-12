@@ -10,3 +10,4 @@ Extract pickup points from an L-Acoustics Soundvision report or a d&b ArrayCalc 
 Сделано с гроком, потому что ладно питон, но AutoLISP это вообще хрен пойми что такое
 
 Обнаружите баги или недочеты - напишите мне, будем исправлять
+Сейчас проверено на AutoCAD 2024 и 2025, VW 2026 (2024 и 2023 сейчас тестируются)
