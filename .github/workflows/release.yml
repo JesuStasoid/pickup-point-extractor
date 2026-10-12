@@ -1,0 +1,140 @@
+# Builds both apps, then publishes GitHub Release "Pick-up point extractor v1.0"
+# with exactly six assets. Tag pushes of v1.0 and workflow_dispatch both do this.
+# Publishing lives here so build.yml cannot attach a different set.
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v1.0"
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: release-v1.0
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build apps
+    uses: ./.github/workflows/build.yml
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: "Pick-up point extractor v1.0.*"
+          path: dist
+          merge-multiple: true
+
+      - name: Publish the six release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          export LC_ALL=C
+
+          tag="v1.0"
+          title="Pick-up point extractor v1.0"
+          stage="${RUNNER_TEMP}/release-assets"
+          notes="${RUNNER_TEMP}/release-notes.md"
+          mkdir -p "$stage"
+
+          cp "dist/Pick-up point extractor v1.0.exe" "$stage/"
+          cp "dist/Pick-up point extractor v1.0.dmg" "$stage/"
+          cp "vectorworks/PlaceArrayCalcHoistsV3.py" "$stage/"
+          cp "vectorworks/Sound_Hoist_Class.vwx" "$stage/"
+          cp "autocad/PlaceArrayCalcHoists.lsp" "$stage/"
+          cp "autocad/HoistPoint.dwg" "$stage/"
+
+          assets=(
+            "$stage/Pick-up point extractor v1.0.exe"
+            "$stage/Pick-up point extractor v1.0.dmg"
+            "$stage/PlaceArrayCalcHoistsV3.py"
+            "$stage/Sound_Hoist_Class.vwx"
+            "$stage/PlaceArrayCalcHoists.lsp"
+            "$stage/HoistPoint.dwg"
+          )
+          if [[ ${#assets[@]} -ne 6 ]]; then
+            echo "internal error: asset list is not 6" >&2
+            exit 1
+          fi
+          for f in "${assets[@]}"; do
+            if [[ ! -f "$f" ]]; then
+              echo "missing staged asset: $f" >&2
+              ls -lR dist "$stage" >&2 || true
+              exit 1
+            fi
+          done
+          # The standalone extractor sources stay in the repo. They are not release files.
+          if find "$stage" -type f \( -name 'extract_*.py' -o -name 'app.py' -o -name 'core.py' \) | grep -q .; then
+            echo "standalone extractor scripts must not be release assets" >&2
+            exit 1
+          fi
+          find "$stage" -type f -printf '%f\n' | sort > "${RUNNER_TEMP}/staged.txt"
+          cat > "${RUNNER_TEMP}/expected.txt" <<'EOF'
+          HoistPoint.dwg
+          Pick-up point extractor v1.0.dmg
+          Pick-up point extractor v1.0.exe
+          PlaceArrayCalcHoists.lsp
+          PlaceArrayCalcHoistsV3.py
+          Sound_Hoist_Class.vwx
+          EOF
+          if ! cmp -s "${RUNNER_TEMP}/staged.txt" "${RUNNER_TEMP}/expected.txt"; then
+            echo "staged files are not the six release assets" >&2
+            diff -u "${RUNNER_TEMP}/expected.txt" "${RUNNER_TEMP}/staged.txt" >&2 || true
+            exit 1
+          fi
+
+          repo_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+          cat > "$notes" <<EOF
+          Pick-up point extractor v1.0 reads an ArrayCalc project or a Soundvision report and writes a hoist CSV. The Vectorworks 2026 and AutoCAD placement files are attached here too.
+
+          Manuals: [English (MANUAL_EN.md)](${repo_url}/blob/${tag}/MANUAL_EN.md) · [Russian (MANUAL_RU.md)](${repo_url}/blob/${tag}/MANUAL_RU.md)
+
+          Video: https://www.youtube.com/watch?v=_y_PgrNg_jc
+          EOF
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --title "$title" --notes-file "$notes"
+            mapfile -t existing < <(gh release view "$tag" --json assets --jq '.assets[].name')
+            for name in "${existing[@]}"; do
+              gh release delete-asset "$tag" "$name" --yes
+            done
+            gh release upload "$tag" "${assets[@]}"
+          elif [[ "${GITHUB_REF}" == "refs/tags/${tag}" ]]; then
+            gh release create "$tag" "${assets[@]}" \
+              --title "$title" \
+              --notes-file "$notes" \
+              --verify-tag
+          else
+            gh release create "$tag" "${assets[@]}" \
+              --title "$title" \
+              --notes-file "$notes" \
+              --target "${GITHUB_SHA}"
+          fi
+
+          gh release view "$tag" --json name,tagName,url,assets \
+            --jq '{name,tagName,url,assets:[.assets[].name] | sort}' > "${RUNNER_TEMP}/release.json"
+          cat "${RUNNER_TEMP}/release.json"
+          jq -r '.assets[]' "${RUNNER_TEMP}/release.json" | sort > "${RUNNER_TEMP}/published.txt"
+          if ! cmp -s "${RUNNER_TEMP}/published.txt" "${RUNNER_TEMP}/expected.txt"; then
+            echo "published assets are not exactly the six expected files" >&2
+            diff -u "${RUNNER_TEMP}/expected.txt" "${RUNNER_TEMP}/published.txt" >&2 || true
+            exit 1
+          fi
+          if [[ "$(jq -r .name "${RUNNER_TEMP}/release.json")" != "$title" ]]; then
+            echo "release title is not ${title}" >&2
+            exit 1
+          fi
+          url="$(jq -r .url "${RUNNER_TEMP}/release.json")"
+          echo "Release: ${url}" >> "$GITHUB_STEP_SUMMARY"

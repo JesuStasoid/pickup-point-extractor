@@ -1,0 +1,3 @@
+*.dwg binary
+*.vwx binary
+*.sh text eol=lf
