@@ -5,7 +5,7 @@ Extract pickup points from an L-Acoustics Soundvision report or a d&b ArrayCalc 
 
 **[Manual (English)](MANUAL_EN.md)** · **[Руководство (русский)](MANUAL_RU.md)**
 
-Video: https://www.youtube.com/watch?v=_y_PgrNg_jc
+Видео-инструкция/Video guide: https://www.youtube.com/watch?v=_y_PgrNg_jc
 
 Сделано с гроком, потому что ладно питон, но AutoLISP это вообще хрен пойми что такое
 
