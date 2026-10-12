@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Smoke-test a frozen Pick-up point extractor (no client files).
 
-  python tests/smoke_frozen.py --exe "Pick-up point extractor v1.0.exe"
+  python tests/smoke_frozen.py --exe "Pick-up_point_extractor_v1.0.exe"
   python tests/smoke_frozen.py --exe "Pick-up point extractor.app/Contents/MacOS/Pick-up point extractor"
 
 Builds a tiny ArrayCalc-shaped SQLite file and a tiny text PDF in a temp

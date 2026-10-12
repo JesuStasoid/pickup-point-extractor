@@ -6,6 +6,6 @@ Extract pickup points from an L-Acoustics Soundvision report or a d&b ArrayCalc 
 
 Video: https://www.youtube.com/watch?v=_y_PgrNg_jc
 
-- `extractor/` — desktop app. GitHub Actions builds `Pick-up point extractor v1.0.exe` and `Pick-up point extractor v1.0.dmg`.
+- `extractor/` — desktop app. GitHub Actions builds `Pick-up_point_extractor_v1.0.exe` and `Pick-up_point_extractor_v1.0.dmg`.
 - `vectorworks/` — Vectorworks 2026 script and data tag style.
 - `autocad/` — AutoCAD script and hoist block.

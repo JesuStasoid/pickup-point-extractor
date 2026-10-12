@@ -1,8 +1,8 @@
 <#
-  Build "Pick-up point extractor v1.0.exe" with PyInstaller.
+  Build "Pick-up_point_extractor_v1.0.exe" with PyInstaller.
   Uses its own venv in _build\.venv (the global Python is not touched).
 
-  .\build_windows.ps1            # onefile exe -> .\Pick-up point extractor v1.0.exe
+  .\build_windows.ps1            # onefile exe -> .\Pick-up_point_extractor_v1.0.exe
   .\build_windows.ps1 -OneDir    # onedir build -> _build\dist-onedir\ (for comparison)
   .\build_windows.ps1 -Python "C:\Python314\python.exe"
 #>
@@ -14,7 +14,7 @@ $ErrorActionPreference = "Stop"
 $Root  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Build = Join-Path $Root "_build"
 $Venv  = Join-Path $Build ".venv"
-$Name  = "Pick-up point extractor v1.0"
+$Name  = "Pick-up_point_extractor_v1.0"
 New-Item -ItemType Directory -Force $Build | Out-Null
 
 if (-not (Test-Path (Join-Path $Venv "Scripts\python.exe"))) {

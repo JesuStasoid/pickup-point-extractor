@@ -4,7 +4,7 @@ Small desktop tool that turns a **d&b ArrayCalc project (.dbpr)** or an **L-Acou
 report (.pdf)** into the hoist CSV used by ACHOISTS (AutoCAD) and the Vectorworks placement scripts.
 
 ## Using it
-1. Start `Pick-up point extractor v1.0.exe`. You can also drop a file onto the exe to pre-fill it.
+1. Start `Pick-up_point_extractor_v1.0.exe`. You can also drop a file onto the exe to pre-fill it.
 2. **Browse…** to a `.dbpr` or `.pdf` file, then press **Extract** (or Enter).
 3. The status line shows the result, for example
    `Done: 40 pick-up points (10 sources) -> Bishkek Arena Vi Fest v2_hoist_picks.csv`.
@@ -90,10 +90,10 @@ python tests/test_core.py                      # bad/corrupt inputs, counting
 set PPE_SAMPLES=<folder>  &  python tests/test_core.py   # + byte-for-byte check vs reference CSVs
 python tests/soundvision_parser_checks.py      # Soundvision wording / units edge cases
 python tests/check_window_bmp.py --self-test   # blank-window screenshot checker
-python tests/smoke_frozen.py --exe "Pick-up point extractor v1.0.exe"
-"Pick-up point extractor v1.0.exe" --cli <file> --report result.json   # frozen build, no window
+python tests/smoke_frozen.py --exe "Pick-up_point_extractor_v1.0.exe"
+"Pick-up_point_extractor_v1.0.exe" --cli <file> --report result.json   # frozen build, no window
 .\tests\test_frozen_windows.ps1 -Exe <exe> -Sample "a.dbpr=ref.csv",...   # exe vs reference CSVs + broken files
 .\tests\measure_windows.ps1 -Exe <exe> [-OneDirExe <exe>] -DemoFile <pdf>  # startup / RAM / CPU
 ```
 
-GitHub Actions (`.github/workflows/build.yml`) runs the pure-Python tests and a frozen `--cli` / `--version-json` smoke test on macOS and Windows. On macOS it also screenshots the real window and rejects a blank image. That workflow runs on `workflow_dispatch`, and the release workflow calls it. `.github/workflows/release.yml` runs on the `v1.0` tag and on `workflow_dispatch`. It builds the `.dmg` and the `.exe`, then publishes the GitHub Release **Pick-up point extractor v1.0** with those two apps plus `PlaceArrayCalcHoistsV3.py`, `Sound_Hoist_Class.vwx`, `PlaceArrayCalcHoists.lsp`, and `HoistPoint.dwg`. Client samples are not in the repo; the smoke test uses a synthetic `.dbpr` and a synthetic PDF.
+GitHub Actions (`.github/workflows/build.yml`) runs the pure-Python tests and a frozen `--cli` / `--version-json` smoke test on macOS and Windows. On macOS it also screenshots the real window and rejects a blank image. That workflow runs on `workflow_dispatch`, and the release workflow calls it. `.github/workflows/release.yml` runs on the `v1.0` tag and on `workflow_dispatch`. It builds `Pick-up_point_extractor_v1.0.dmg` and `Pick-up_point_extractor_v1.0.exe`, then publishes the GitHub Release **Pick-up point extractor v1.0** with those two apps plus `PlaceArrayCalcHoistsV3.py`, `Sound_Hoist_Class.vwx`, `PlaceArrayCalcHoists.lsp`, and `HoistPoint.dwg`. Client samples are not in the repo; the smoke test uses a synthetic `.dbpr` and a synthetic PDF.

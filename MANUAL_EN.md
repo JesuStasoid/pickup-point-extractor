@@ -12,8 +12,8 @@ The workflow:
 
 | File | Used for |
 |---|---|
-| `Pick-up point extractor v1.0.exe` | Windows extractor |
-| `Pick-up point extractor v1.0.dmg` | macOS extractor (Apple Silicon and Intel, macOS 11+) |
+| `Pick-up_point_extractor_v1.0.exe` | Windows extractor |
+| `Pick-up_point_extractor_v1.0.dmg` | macOS extractor (Apple Silicon and Intel, macOS 11+) |
 | `PlaceArrayCalcHoistsV3.py` | Vectorworks 2026 placement script |
 | `Sound_Hoist_Class.vwx` | Vectorworks data tag style "Sound_Hoist" used by the script |
 | `PlaceArrayCalcHoists.lsp` | AutoCAD placement script for Windows and Mac (commands `ACHOISTS`, `ACHOISTS_CLI`) |
