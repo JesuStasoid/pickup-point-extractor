@@ -10,6 +10,17 @@
 ;;;    3. one block insert per pick at (x, y, z) - z = hoist height;
 ;;;       optional rotation of the whole layout about 0,0 (Z unchanged)
 ;;;
+;;;
+;;;  AutoCAD for Mac (no ActiveX there): the same file loads, ACHOISTS opens
+;;;  the same dialog and places the hoists with plain AutoLISP (entmake /
+;;;  entmod). Same results. If the dialog cannot be loaded there, ACHOISTS
+;;;  falls back to command-line prompts by itself.
+;;;  ACHOISTS_CLI = the command-line version on any platform.
+;;;  Testing the Mac path on Windows: (setq *ach:simulate-mac* T), then
+;;;  ACHOISTS / ACHOISTS_CLI behave as on a Mac (plain-AutoLISP engine, Mac
+;;;  dialog layout, no font repair). (setq *ach:force-engine* "lisp") swaps
+;;;  only the engine.
+;;;
 ;;;  Non-interactive core (for scripts / testing, never opens a dialog):
 ;;;    (achoists-run CSVPATH SINGLES COLOR DEPT SUFFIX DELETEOLD)
 ;;;      layout = *ach:label-layout* (default "side")
@@ -30,18 +41,85 @@
 ;;;               ("rotation" . degrees)   rotate X/Y about 0,0, CCW +, default 0
 ;;;               ("rotate-symbols" . T)   also rotate the symbols (labels
 ;;;                                        always stay upright on the page)
+;;;               ("engine" . "lisp")      plain-AutoLISP (Mac) engine;
+;;;                                        default: ActiveX when available
 ;;;    Returns (T . summary-text) or (nil . error-text).
 ;;; ==========================================================================
 
-(vl-load-com)
+;;; ------------------------------ platform ---------------------------------
+;; Load order matters on AutoCAD for Mac: if any form fails while the file is
+;; loading, everything after it is never defined. So this section uses only
+;; functions that exist on both platforms, and the two commands are defined
+;; right here, before anything else. The file is plain ASCII on purpose (no
+;; encoding questions on either platform).
+(setq *ach:loaded* nil *ach:stage* "start")
 
+;; T on AutoCAD for Mac (PLATFORM reads e.g. "Mac OS X Version 10.16 (x86_64)";
+;; on Windows "Microsoft Windows NT Version 10.0 (x64)").
+;; *ach:simulate-mac* = T makes Windows behave as a Mac (testing only).
+(defun ach:mac-p ()
+  (or *ach:simulate-mac*
+      (wcmatch (strcase (vl-princ-to-string (getvar "PLATFORM"))) "*MAC*,*DARWIN*")))
+
+;; Shown by the commands when the file did not finish loading.
+(defun ach:load-failed ()
+  (princ (strcat "\nACHOISTS: PlaceArrayCalcHoists.lsp did not finish loading"
+                 " (it stopped in: " (vl-princ-to-string *ach:stage*) ")."
+                 "\nLoad it again with APPLOAD and send the '; error:' line"
+                 " shown on the command line."))
+  (princ))
+
+;; The dialog on Windows; on AutoCAD for Mac *ach:mac-ui* ("dialog" by default,
+;; falling back to the prompts if the dialog cannot be loaded).
+(defun c:ACHOISTS ()
+  (if (and *ach:loaded* ach:command)
+    (ach:command (if (or (ach:mac-p) (not (ach:activex-p))) *ach:mac-ui* "dialog"))
+    (ach:load-failed)))
+
+;; Command-line prompts on any platform.
+(defun c:ACHOISTS_CLI ()
+  (if (and *ach:loaded* ach:command)
+    (ach:command "prompts")
+    (ach:load-failed)))
+
+;; ActiveX (vl-load-com, vla-*, vlax-*) is Windows-only. It is loaded the first
+;; time it is needed, never at load time and never on a Mac.
+(defun ach:activex-p ()
+  (and (not (ach:mac-p))
+       (progn
+         (if (not *ach:ax-checked*)
+           (setq *ach:ax-checked* T
+                 *ach:ax-ok* (and (not (vl-catch-all-error-p
+                                         (vl-catch-all-apply 'vl-load-com nil)))
+                                  (if vlax-get-acad-object T))))
+         *ach:ax-ok*)))
+
+;; String from Unicode code points, so the file itself stays ASCII. Returns
+;; FALLBACK if this AutoLISP cannot make those characters (LISPSYS 0).
+(defun ach:ustr (codes fallback / s)
+  (setq s (vl-catch-all-apply
+            '(lambda () (apply 'strcat (mapcar 'chr codes)))
+            nil))
+  (if (and (= (type s) 'STR)
+           (= (strlen s) (length codes))
+           (= (ascii s) (car codes)))
+    s
+    fallback))
+
+(setq *ach:stage* "settings")
 ;;; ---------------------------- USER SETTINGS -------------------------------
 ;; Block name used in the drawing. The block DWG next to this file is
 ;; inserted and renamed to this name when the drawing does not have it yet.
-(setq *ach:block-name*    "точка")
+;; "tochka" in Cyrillic (U+0442 U+043E U+0447 U+043A U+0430).
+(setq *ach:block-name*    (ach:ustr '(1090 1086 1095 1082 1072) "tochka"))
 ;; Other names accepted as "the hoist block" if already present in a drawing
 ;; (symbol-table lookups are case-insensitive anyway).
-(setq *ach:block-aliases* '("Точка" "ТОЧКА" "x-2D_RIG_POINTS$0$RIG_ONE_TON"))
+;; Cyrillic "Tochka" and "TOCHKA".
+(setq *ach:block-aliases*
+  (vl-remove nil
+    (list (ach:ustr '(1058 1086 1095 1082 1072) nil)
+          (ach:ustr '(1058 1054 1063 1050 1040) nil)
+          "x-2D_RIG_POINTS$0$RIG_ONE_TON")))
 ;; Block DWG file shipped next to this .lsp (geometry drawn in millimetres).
 (setq *ach:block-file*    "HoistPoint.dwg")
 ;; Units assumed for a block definition whose Units property is "Unitless".
@@ -51,7 +129,7 @@
 (setq *ach:layer*         "AC_HOISTS")
 (setq *ach:layer-color*   7)
 ;; Attribute tags inside the block.
-(setq *ach:tag-dept*      "PT-NAME")   ; department text, e.g. "Sound" / "Звук"
+(setq *ach:tag-dept*      "PT-NAME")   ; department text, e.g. "Sound" (or Cyrillic "Zvuk")
 (setq *ach:tag-load*      "LOAD")      ; weight, e.g. "664 kg"
 ;; Defaults shown in the dialog (last used values are remembered).
 (setq *ach:default-dept*   "Sound")
@@ -86,10 +164,25 @@
 (setq *ach:text-font*     "Arial Narrow")
 ;; Registered application name for the xdata that marks our inserts.
 (setq *ach:xdata-app*     "ACHOISTS")
+;; How ACHOISTS asks for its options on AutoCAD for Mac: "dialog" (the same
+;; DCL dialog as on Windows - DCL exists on Mac since AutoCAD 2021; falls
+;; back to the prompts if it cannot be loaded) or "prompts" (command line).
+(setq *ach:mac-ui*        "dialog")
+;; Placement engine: nil = automatic (ActiveX on Windows, plain AutoLISP
+;; where ActiveX is missing). Set to "lisp" to run the Mac engine on Windows.
+(setq *ach:force-engine*  nil)
+;; Testing only: T makes Windows behave as AutoCAD for Mac (see header).
+(if (not (boundp '*ach:simulate-mac*)) (setq *ach:simulate-mac* nil))
+;; Colour names accepted by the command-line prompt (ACI numbers 1-255 too).
+(setq *ach:color-names*
+  '(("red" . 1) ("yellow" . 2) ("green" . 3) ("cyan" . 4) ("blue" . 5)
+    ("magenta" . 6) ("white" . 7) ("grey" . 8) ("gray" . 8)
+    ("lightgrey" . 9) ("lightgray" . 9) ("orange" . 30)))
 ;;; -------------------------------------------------------------------------
 
 
 ;;; ============================== helpers ==================================
+(setq *ach:stage* "helpers")
 
 (defun ach:lower (s) (if s (strcase s T) ""))
 
@@ -224,6 +317,7 @@
   s)
 
 ;;; ============================ block handling =============================
+(setq *ach:stage* "block handling")
 
 (defun ach:block-exists-p (name)
   (and name (tblsearch "BLOCK" name)))
@@ -246,18 +340,19 @@
   (if found (vla-get-Name (vla-Item (vla-get-Blocks doc) found))))
 
 ;; Look for HoistPoint.dwg in the usual places.
-(defun ach:find-block-file (csvpath / cands lsp d p hit)
+(defun ach:find-block-file (csvpath / cands lsp d p hit sep)
+  (setq sep (if (ach:mac-p) "/" "\\"))
   (setq cands (list (getenv "ACHOISTS_BlockFile") (findfile *ach:block-file*)))
   (if (setq lsp (findfile "PlaceArrayCalcHoists.lsp"))
-    (setq cands (cons (strcat (vl-filename-directory lsp) "\\" *ach:block-file*) cands)))
+    (setq cands (cons (strcat (vl-filename-directory lsp) sep *ach:block-file*) cands)))
   (setq d (getvar "DWGPREFIX"))
   (setq cands (append cands (list (strcat d *ach:block-file*)
-                                  (strcat d "acad-scripts\\" *ach:block-file*))))
+                                  (strcat d "acad-scripts" sep *ach:block-file*))))
   (if csvpath
     (progn
-      (setq d (strcat (vl-filename-directory csvpath) "\\"))
+      (setq d (strcat (vl-filename-directory csvpath) sep))
       (setq cands (append cands (list (strcat d *ach:block-file*)
-                                      (strcat d "acad-scripts\\" *ach:block-file*))))))
+                                      (strcat d "acad-scripts" sep *ach:block-file*))))))
   (foreach p cands
     (if (and (not hit) p (/= p "") (findfile p)) (setq hit (findfile p))))
   hit)
@@ -522,6 +617,482 @@
   (entmod (append ed (list xd)))
   (entupd ename))
 
+;;; =================== plain AutoLISP engine (AutoCAD for Mac) ==============
+(setq *ach:stage* "plain AutoLISP engine (AutoCAD for Mac)")
+;; The same jobs as the ActiveX helpers above, done with tblsearch / entget /
+;; entmod / entmake / command, which AutoCAD for Mac supports. Used when
+;; ActiveX is missing, or on Windows with (setq *ach:force-engine* "lisp").
+;; Blocks are passed around by name, inserts by entity name.
+
+;; Replace (or add) DXF pairs in an entget list.
+(defun ach:l-put (ed pairs)
+  (foreach p pairs
+    (setq ed (if (assoc (car p) ed)
+               (subst p (assoc (car p) ed) ed)
+               (append ed (list p)))))
+  ed)
+
+;; Change only the given groups. A partial list (-1 + changed pairs) is
+;; used on purpose: entmod with the full entget list of an ATTRIB made by
+;; entmake loses its style, justification and alignment point.
+(defun ach:l-mod (e pairs) (entmod (cons (cons -1 e) pairs)))
+
+;; ActiveX AcAlignment number <-> DXF 72 (horizontal) + 74 (vertical) of
+;; ATTDEF / ATTRIB. 0 Left 1 Center 2 Right 3 Aligned 4 Middle 5 Fit,
+;; 6-8 Top L/C/R, 9-11 Middle L/C/R, 12-14 Bottom L/C/R.
+(defun ach:l-align (ed / h v)
+  (setq h (cond ((cdr (assoc 72 ed))) (0))
+        v (cond ((cdr (assoc 74 ed))) (0)))
+  (cond ((= v 3) (+ 6 h)) ((= v 2) (+ 9 h)) ((= v 1) (+ 12 h)) (T h)))
+
+(defun ach:l-align-codes (al)
+  (cond ((< al 6)  (list (cons 72 al) (cons 74 0)))
+        ((< al 9)  (list (cons 72 (- al 6)) (cons 74 3)))
+        ((< al 12) (list (cons 72 (- al 9)) (cons 74 2)))
+        (T         (list (cons 72 (- al 12)) (cons 74 1)))))
+
+;; Anchor point: insertion point (10) for Left text, alignment point (11) otherwise.
+(defun ach:l-anchor (ed)
+  (if (= (ach:l-align ed) 0) (cdr (assoc 10 ed)) (cdr (assoc 11 ed))))
+
+;; Set justification + anchor point of one attribute.
+(defun ach:l-set-align (e al pt)
+  (ach:l-mod e (append (ach:l-align-codes al)
+                       (list (cons (if (= al 0) 10 11) pt)))))
+
+;; ---------- blocks
+(defun ach:l-block-ents (bname / e out)
+  (setq e (cdr (assoc -2 (tblsearch "BLOCK" bname))))
+  (while e (setq out (cons e out) e (entnext e)))
+  (reverse out))
+
+(defun ach:l-block-origin (bname / d)
+  (if (setq d (tblsearch "BLOCK" bname)) (cdr (assoc 10 d)) '(0.0 0.0 0.0)))
+
+(defun ach:l-find-block (/ found names unames d)
+  (setq names (cons *ach:block-name* *ach:block-aliases*))
+  (foreach n names
+    (if (and (not found) (setq d (tblsearch "BLOCK" n)))
+      (setq found (cdr (assoc 2 d)))))
+  (if (not found)
+    (progn
+      (setq unames (mapcar 'strcase names)
+            d      (tblnext "BLOCK" T))
+      (while (and d (not found))
+        (if (and (= 0 (logand 4 (cdr (assoc 70 d))))
+                 (member (strcase (cdr (assoc 2 d))) unames))
+          (setq found (cdr (assoc 2 d))))
+        (setq d (tblnext "BLOCK")))))
+  found)
+
+;; BLOCK_RECORD of a block (holds the block's insert units in group 70).
+(defun ach:l-block-record (bname / e ed)
+  (if (setq e (tblobjname "BLOCK" bname))
+    (progn (setq ed (entget e))
+           (if (= (cdr (assoc 0 ed)) "BLOCK_RECORD") e (cdr (assoc 330 ed))))))
+
+(defun ach:l-block-units (bname / r)
+  (cond ((and (setq r (ach:l-block-record bname)) (cdr (assoc 70 (entget r)))))
+        (0)))
+
+;; Define the block from the DWG (-INSERT name=file, then cancel before the
+;; insertion point, so only the definition stays). Returns the name or nil.
+(defun ach:l-load-block-file (path / bname r)
+  (setq bname (if (tblsearch "BLOCK" *ach:block-name*) (vl-filename-base path) *ach:block-name*))
+  (setq r (vl-catch-all-apply
+            '(lambda () (command "_.-INSERT" (strcat bname "=" path)) (command))
+            nil))
+  (if (and (not (vl-catch-all-error-p r)) (tblsearch "BLOCK" bname))
+    (progn
+      (if (= (ach:l-block-units bname) 0)
+        (vl-catch-all-apply 'ach:l-mod
+          (list (ach:l-block-record bname) (list (cons 70 *ach:block-default-units*)))))
+      (setenv "ACHOISTS_BlockFile" path)
+      bname)
+    (progn (princ (strcat "\nACHOISTS: cannot insert " path)) nil)))
+
+(defun ach:l-fills-byblock (bname / n ed)
+  (setq n 0)
+  (foreach e (ach:l-block-ents bname)
+    (setq ed (entget e))
+    (if (member (cdr (assoc 0 ed)) '("HATCH" "SOLID" "TRACE"))
+      (progn
+        (setq n (1+ n))
+        (if (or (/= (cdr (assoc 62 ed)) 0) (assoc 420 ed) (assoc 430 ed))
+          (progn
+            (setq ed (vl-remove-if '(lambda (p) (member (car p) '(420 430))) ed))
+            (entmod (if (assoc 62 ed)
+                      (subst '(62 . 0) (assoc 62 ed) ed)
+                      ;; no 62 = ByLayer: add it right after the layer
+                      (apply 'append
+                             (mapcar '(lambda (p) (if (= (car p) 8) (list p '(62 . 0)) (list p)))
+                                     ed)))))))))
+  n)
+
+(defun ach:l-attdef-eds (bname)
+  (vl-remove-if-not '(lambda (ed) (= (cdr (assoc 0 ed)) "ATTDEF"))
+                    (mapcar 'entget (ach:l-block-ents bname))))
+
+(defun ach:l-block-tags (bname)
+  (mapcar '(lambda (ed) (cdr (assoc 2 ed))) (ach:l-attdef-eds bname)))
+
+;; Same list as ach:block-attdefs.
+(defun ach:l-block-attdefs (bname / org pt out)
+  (setq org (ach:l-block-origin bname))
+  (foreach ed (ach:l-attdef-eds bname)
+    (setq pt (ach:l-anchor ed))
+    (setq out (cons (list (strcase (cdr (assoc 2 ed))) (ach:l-align ed)
+                          (list (- (car pt) (car org)) (- (cadr pt) (cadr org)))
+                          (cdr (assoc 50 ed))
+                          (cdr (assoc 7 ed)))
+                    out)))
+  out)
+
+;; ---------- geometry extents (no GetBoundingBox without ActiveX)
+;; Points of a CCW arc from A1 to A2 (radians): ends + quadrant points.
+(defun ach:l-arc-pts (c r a1 a2 / pts k a)
+  (setq a1  (rem a1 (* 2.0 pi)))
+  (if (< a1 0.0) (setq a1 (+ a1 (* 2.0 pi))))
+  (setq a2  (rem a2 (* 2.0 pi)))
+  (if (< a2 0.0) (setq a2 (+ a2 (* 2.0 pi))))
+  (if (<= a2 a1) (setq a2 (+ a2 (* 2.0 pi))))
+  (setq pts (list (polar c a1 r) (polar c a2 r)) k 0)
+  (repeat 8
+    (setq a (* k (/ pi 2.0)) k (1+ k))
+    (if (and (> a a1) (< a a2)) (setq pts (cons (polar c a r) pts))))
+  pts)
+
+;; Points of one polyline segment P1 -> P2 with bulge B.
+(defun ach:l-bulge-pts (p1 p2 b / th r c tmp)
+  (if (or (not b) (equal b 0.0 1e-12) (equal p1 p2 1e-12))
+    (list p1 p2)
+    (progn
+      (if (< b 0.0) (setq tmp p1 p1 p2 p2 tmp b (- b)))
+      (setq th (* 4.0 (atan b))
+            r  (/ (distance p1 p2) (* 2.0 (sin (/ th 2.0))))
+            c  (polar p1 (+ (angle p1 p2) (- (/ pi 2.0) (/ th 2.0))) r))
+      (ach:l-arc-pts c r (angle c p1) (angle c p2)))))
+
+;; Closed or open vertex list ((pt . bulge) ...) -> points.
+(defun ach:l-vertex-pts (verts closed / pts i n)
+  (setq n (length verts) i 0)
+  (repeat (if closed n (max 0 (1- n)))
+    (setq pts (append (ach:l-bulge-pts (car (nth i verts))
+                                       (car (nth (rem (1+ i) n) verts))
+                                       (cdr (nth i verts)))
+                      pts)
+          i (1+ i)))
+  (if (= n 1) (list (car (car verts))) pts))
+
+;; Boundary points of a HATCH (polyline paths with bulges, line and arc edges).
+(defun ach:l-hatch-pts (ed / l pts npath flag hasb cnt verts v b et c r)
+  (if (setq l (member (assoc 91 ed) ed))
+    (progn
+      (setq npath (cdr (car l)) l (cdr l))
+      (repeat npath
+        (if (setq l (member (assoc 92 l) l))
+          (progn
+            (setq flag (cdr (car l)) l (cdr l))
+            (if (= 2 (logand flag 2))
+              (progn                    ; polyline path
+                (setq hasb (cdr (assoc 72 l))
+                      l    (member (assoc 93 l) l)
+                      cnt  (cdr (car l)) l (cdr l) verts nil)
+                (repeat cnt
+                  (setq l (member (assoc 10 l) l) v (cdr (car l)) l (cdr l) b 0.0)
+                  (if (and (= hasb 1) (= (car (car l)) 42)) (setq b (cdr (car l)) l (cdr l)))
+                  (setq verts (cons (cons v b) verts)))
+                (setq pts (append (ach:l-vertex-pts (reverse verts) T) pts)))
+              (progn                    ; edge path
+                (setq l (member (assoc 93 l) l) cnt (cdr (car l)) l (cdr l))
+                (repeat cnt
+                  (setq l (member (assoc 72 l) l) et (cdr (car l)) l (cdr l))
+                  (cond
+                    ((= et 2)           ; arc: angles in degrees
+                     (setq c (cdr (assoc 10 l)) r (cdr (assoc 40 l)))
+                     (setq pts (append (if (= (cdr (assoc 73 l)) 1)
+                                         (ach:l-arc-pts c r (* pi (/ (cdr (assoc 50 l)) 180.0))
+                                                            (* pi (/ (cdr (assoc 51 l)) 180.0)))
+                                         ;; clockwise: take the whole circle
+                                         (list (polar c 0.0 r) (polar c (/ pi 2.0) r)
+                                               (polar c pi r) (polar c (* 1.5 pi) r)))
+                                       pts)))
+                    (T (setq pts (cons (cdr (assoc 10 l)) pts))
+                       (if (and (= et 1) (assoc 11 l)) (setq pts (cons (cdr (assoc 11 l)) pts)))))))))))))
+  pts)
+
+(defun ach:l-ent-pts (ed / typ c r v verts l tb rot ip)
+  (setq typ (cdr (assoc 0 ed)))
+  (cond
+    ((= typ "LINE") (list (cdr (assoc 10 ed)) (cdr (assoc 11 ed))))
+    ((= typ "CIRCLE")
+     (setq c (cdr (assoc 10 ed)) r (cdr (assoc 40 ed)))
+     (list (list (- (car c) r) (- (cadr c) r)) (list (+ (car c) r) (+ (cadr c) r))))
+    ((= typ "ARC")
+     (ach:l-arc-pts (cdr (assoc 10 ed)) (cdr (assoc 40 ed)) (cdr (assoc 50 ed)) (cdr (assoc 51 ed))))
+    ((= typ "LWPOLYLINE")
+     (setq l ed)
+     (while (setq l (member (assoc 10 l) l))
+       (setq v (cdr (car l)) l (cdr l) c 0.0)
+       ;; this vertex's bulge (42) sits before the next 10
+       (while (and l (/= (car (car l)) 10))
+         (if (= (car (car l)) 42) (setq c (cdr (car l))))
+         (setq l (cdr l)))
+       (setq verts (cons (cons v c) verts)))
+     (ach:l-vertex-pts (reverse verts) (= 1 (logand 1 (cdr (assoc 70 ed))))))
+    ((member typ '("SOLID" "TRACE"))
+     (mapcar '(lambda (g) (cdr (assoc g ed))) '(10 11 12 13)))
+    ((member typ '("POINT" "VERTEX")) (list (cdr (assoc 10 ed))))
+    ((= typ "HATCH") (ach:l-hatch-pts ed))
+    ((= typ "ELLIPSE")
+     (setq c (cdr (assoc 10 ed)) v (cdr (assoc 11 ed))
+           r (distance '(0.0 0.0) (list (car v) (cadr v))))
+     (list (list (- (car c) r) (- (cadr c) r)) (list (+ (car c) r) (+ (cadr c) r))))
+    ((= typ "TEXT")
+     (if (setq tb (textbox ed))
+       (progn
+         (setq rot (cdr (assoc 50 ed)) ip (cdr (assoc 10 ed)))
+         (mapcar '(lambda (p) (list (+ (car ip) (- (* (car p) (cos rot)) (* (cadr p) (sin rot))))
+                                    (+ (cadr ip) (+ (* (car p) (sin rot)) (* (cadr p) (cos rot))))))
+                 (list (car tb) (cadr tb) (list (car (car tb)) (cadr (cadr tb)))
+                       (list (car (cadr tb)) (cadr (car tb))))))))))
+
+;; Same result as ach:block-extents.
+(defun ach:l-block-extents (bname / org lo hi)
+  (setq org (ach:l-block-origin bname))
+  (foreach e (ach:l-block-ents bname)
+    (foreach p (vl-remove nil (ach:l-ent-pts (entget e)))
+      (setq lo (if lo (list (min (car lo) (car p)) (min (cadr lo) (cadr p))) (list (car p) (cadr p)))
+            hi (if hi (list (max (car hi) (car p)) (max (cadr hi) (cadr p))) (list (car p) (cadr p))))))
+  (if (and lo hi)
+    (list (list (- (car lo) (car org)) (- (cadr lo) (cadr org)))
+          (list (- (car hi) (car org)) (- (cadr hi) (cadr org))))))
+
+;; ---------- text style (check only; the Mac engine does not repair fonts)
+(defun ach:l-check-style (sname / d e xd tf ff)
+  (if (not (setq d (tblsearch "STYLE" sname)))
+    (strcat sname " (style missing!)")
+    (progn
+      (setq ff (cond ((cdr (assoc 3 d))) ("")))
+      (setq e  (tblobjname "STYLE" sname)
+            xd (cdr (assoc -3 (entget e '("ACAD"))))
+            tf (cdr (assoc 1000 (cdr (assoc "ACAD" xd)))))
+      (cond
+        ((and tf (/= tf ""))
+         (strcat sname " (" tf
+                 (if (or (ach:mac-p) (ach:font-found-p ff)) "" ", font file not found!") ")"))
+        ((ach:font-found-p ff) (strcat sname " (" ff ")"))
+        (T (strcat sname " (font '" ff "' not found - check the style)"))))))
+
+;; ---------- layer
+(defun ach:l-ensure-layer (name / e ed fl)
+  (if (not (tblsearch "LAYER" name))
+    (entmake (list '(0 . "LAYER") '(100 . "AcDbSymbolTableRecord") '(100 . "AcDbLayerTableRecord")
+                   (cons 2 name) '(70 . 0) (cons 62 *ach:layer-color*) '(6 . "Continuous"))))
+  (if (setq e (tblobjname "LAYER" name))
+    (progn
+      (setq ed (entget e)
+            fl (logand (cdr (assoc 70 ed)) (~ 4)))                  ; unlock
+      (if (/= (strcase (getvar "CLAYER")) (strcase name))
+        (setq fl (logand fl (~ 1))))                                ; thaw
+      (entmod (ach:l-put ed (list (cons 70 fl) (cons 62 (abs (cdr (assoc 62 ed))))))))) ; on
+  name)
+
+;; ---------- previous inserts
+(defun ach:l-previous-inserts (bname / ss i e out)
+  (if (setq ss (ssget "_X" (list (cons 0 "INSERT") (list -3 (list *ach:xdata-app*)))))
+    (progn (setq i 0)
+           (repeat (sslength ss) (setq out (cons (ssname ss i) out) i (1+ i)))))
+  (if (and bname (setq ss (ssget "_X" (list (cons 0 "INSERT") (cons 8 *ach:layer*)))))
+    (progn
+      (setq i 0)
+      (repeat (sslength ss)
+        (setq e (ssname ss i) i (1+ i))
+        (if (and (= (strcase (cdr (assoc 2 (entget e)))) (strcase bname))
+                 (not (member e out)))
+          (setq out (cons e out))))))
+  out)
+
+;; ---------- inserts and attributes
+;; Block point -> world: (p - origin) x scale, rotated by ROT, + insertion point.
+(defun ach:l-xform (lp org ip sc rot / x y)
+  (setq x (* (- (car lp) (car org)) sc)
+        y (* (- (cadr lp) (cadr org)) sc))
+  (list (+ (car ip) (- (* x (cos rot)) (* y (sin rot))))
+        (+ (cadr ip) (+ (* x (sin rot)) (* y (cos rot))))
+        (+ (caddr ip) (* (- (cond ((caddr lp)) (0.0)) (cond ((caddr org)) (0.0))) sc))))
+
+;; ATTRIB entmake list for one ATTDEF of a block inserted at IP, SC, ROT.
+(defun ach:l-attrib (d org ip sc rot / out g)
+  ;; no subclass markers: with them entmake drops the style, justification
+  ;; and alignment point of an ATTRIB
+  (setq out (list '(0 . "ATTRIB") '(67 . 0)))
+  (foreach g '(8 6 62 420 370 48 60)
+    (if (assoc g d) (setq out (append out (list (assoc g d))))))
+  (append out
+          (list (cons 10 (ach:l-xform (cdr (assoc 10 d)) org ip sc rot))
+                (cons 40 (* (cdr (assoc 40 d)) sc))
+                (cons 1 (cdr (assoc 1 d)))
+                (cons 50 (+ (cdr (assoc 50 d)) rot))
+                (cons 41 (cdr (assoc 41 d)))
+                (cons 51 (cdr (assoc 51 d)))
+                (cons 7 (cdr (assoc 7 d)))
+                (cons 71 (cdr (assoc 71 d)))
+                (cons 72 (cdr (assoc 72 d)))
+                (cons 11 (ach:l-xform (cdr (assoc 11 d)) org ip sc rot))
+                '(210 0.0 0.0 1.0)
+                (cons 2 (cdr (assoc 2 d)))
+                (cons 70 (logand (cdr (assoc 70 d)) (~ 2)))
+                '(73 . 0)
+                (cons 74 (cdr (assoc 74 d))))))
+
+;; Insert BNAME in model space with its attributes (default values).
+;; Returns the INSERT's entity name, or nil.
+(defun ach:l-insert (bname ip sc rot / org defs ok)
+  (setq org  (ach:l-block-origin bname)
+        defs (vl-remove-if '(lambda (ed) (= 2 (logand 2 (cdr (assoc 70 ed)))))
+                           (ach:l-attdef-eds bname)))
+  (setq ok (entmake (append (list '(0 . "INSERT") '(100 . "AcDbEntity") '(67 . 0)
+                                  (cons 8 (getvar "CLAYER")) '(100 . "AcDbBlockReference"))
+                            (if defs '((66 . 1)))
+                            (list (cons 2 bname) (cons 10 ip)
+                                  (cons 41 sc) (cons 42 sc) (cons 43 sc) (cons 50 rot)
+                                  '(210 0.0 0.0 1.0)))))
+  (if ok
+    (progn
+      (foreach d defs (if (not (entmake (ach:l-attrib d org ip sc rot))) (setq ok nil)))
+      (if defs (if (not (entmake '((0 . "SEQEND") (100 . "AcDbEntity")))) (setq ok nil)))))
+  (if ok (entlast)))
+
+(defun ach:l-atts (ins / e ed out)
+  (setq e (entnext ins))
+  (while (and e (= (cdr (assoc 0 (setq ed (entget e)))) "ATTRIB"))
+    (setq out (cons e out) e (entnext e)))
+  (reverse out))
+
+(defun ach:l-tag (a) (strcase (cdr (assoc 2 (entget a)))))
+
+(defun ach:l-set-att (ins tag val / hit)
+  (foreach a (ach:l-atts ins)
+    (if (= (ach:l-tag a) (strcase tag))
+      (progn (ach:l-mod a (list (cons 1 val))) (setq hit T))))
+  hit)
+
+(defun ach:l-att-styles (ins defs / d n)
+  (setq n 0)
+  (foreach a (ach:l-atts ins)
+    (if (and (setq d (assoc (ach:l-tag a) defs))
+             (nth 4 d)
+             (/= (strcase (cdr (assoc 7 (entget a)))) (strcase (nth 4 d)))
+             (ach:l-mod a (list (cons 7 (nth 4 d)))))
+      (setq n (1+ n))))
+  n)
+
+;; Like ach:local->world, for an INSERT entity.
+(defun ach:l-local->world (ins lp rot / ed ip x y)
+  (setq ed (entget ins)
+        ip (cdr (assoc 10 ed))
+        x  (* (car lp) (cdr (assoc 41 ed)))
+        y  (* (cadr lp) (cdr (assoc 42 ed))))
+  (list (+ (car ip) (- (* x (cos rot)) (* y (sin rot))))
+        (+ (cadr ip) (+ (* x (sin rot)) (* y (cos rot))))
+        (caddr ip)))
+
+(defun ach:l-upright-atts (ins defs / d)
+  (foreach a (ach:l-atts ins)
+    (if (setq d (assoc (ach:l-tag a) defs))
+      (progn
+        (ach:l-mod a (list (cons 50 (nth 3 d))))
+        (ach:l-set-align a (nth 1 d) (ach:l-local->world ins (nth 2 d) 0.0))))))
+
+(defun ach:l-topbottom-atts (ins ext / cx ytop ybot gap tag)
+  (if ext
+    (progn
+      (setq cx   (/ (+ (car (car ext)) (car (cadr ext))) 2.0)
+            gap  (* *ach:tb-gap-ratio* (/ (- (cadr (cadr ext)) (cadr (car ext))) 2.0))
+            ytop (+ (cadr (cadr ext)) gap)
+            ybot (- (cadr (car ext)) gap))
+      (foreach a (ach:l-atts ins)
+        (setq tag (ach:l-tag a))
+        (cond
+          ((= tag (strcase *ach:tag-dept*))
+           (ach:l-set-align a 1 (ach:l-local->world ins (list cx ytop) 0.0)))   ; Center
+          ((= tag (strcase *ach:tag-load*))
+           (ach:l-set-align a 7 (ach:l-local->world ins (list cx ybot) 0.0)))))))) ; TopCenter
+
+(defun ach:l-flip-atts (ins / ip ed al nal pt)
+  (setq ip (cdr (assoc 10 (entget ins))))
+  (foreach a (ach:l-atts ins)
+    (setq ed  (entget a)
+          al  (ach:l-align ed)
+          nal (cdr (assoc al '((0 . 2) (2 . 0) (6 . 8) (8 . 6) (9 . 11) (11 . 9)
+                               (12 . 14) (14 . 12) (1 . 1) (4 . 4) (7 . 7) (10 . 10) (13 . 13)))))
+    (if nal
+      (progn
+        (setq pt (ach:l-anchor ed))
+        (ach:l-set-align a nal (list (- (* 2.0 (car ip)) (car pt)) (cadr pt) (caddr pt)))))))
+
+;;; ======================= engine switch (ActiveX / plain) =================
+(setq *ach:stage* "engine switch (ActiveX / plain)")
+(setq *ach:eng* nil)
+
+;; "activex" or "lisp" for a run. REQ: "lisp" / "activex" / nil (= automatic).
+(defun ach:engine (req / e)
+  (setq e (cond (req) (*ach:force-engine*) ("auto")))
+  (if (and (/= e "lisp") (ach:activex-p)) "activex" "lisp"))
+
+(defun ach:ax-p () (/= *ach:eng* "lisp"))
+
+(defun ach:x-undo-start (doc)
+  (if (ach:ax-p) (vla-StartUndoMark doc) (command-s "_.UNDO" "_Begin")))
+(defun ach:x-undo-end (doc)
+  (if (ach:ax-p) (vla-EndUndoMark doc) (command-s "_.UNDO" "_End")))
+(defun ach:x-regen (doc)
+  (if (ach:ax-p) (vla-Regen doc acAllViewports) (command-s "_.REGENALL")))
+(defun ach:x-find-block (doc)
+  (if (ach:ax-p) (ach:find-block doc) (ach:l-find-block)))
+(defun ach:x-load-block-file (doc ms path)
+  (if (ach:ax-p) (ach:load-block-file doc ms path) (ach:l-load-block-file path)))
+(defun ach:x-block (doc bname)
+  (if (ach:ax-p) (vla-Item (vla-get-Blocks doc) bname) bname))
+(defun ach:x-block-units (blk)
+  (if (ach:ax-p) (vla-get-Units blk) (ach:l-block-units blk)))
+(defun ach:x-fills-byblock (blk)
+  (if (ach:ax-p) (ach:fills-byblock blk) (ach:l-fills-byblock blk)))
+(defun ach:x-block-tags (blk)
+  (if (ach:ax-p) (ach:block-tags blk) (ach:l-block-tags blk)))
+(defun ach:x-block-extents (blk)
+  (if (ach:ax-p) (ach:block-extents blk) (ach:l-block-extents blk)))
+(defun ach:x-block-attdefs (blk)
+  (if (ach:ax-p) (ach:block-attdefs blk) (ach:l-block-attdefs blk)))
+(defun ach:x-check-style (doc sname)
+  (if (ach:ax-p) (ach:check-style doc sname) (ach:l-check-style sname)))
+(defun ach:x-ensure-layer (doc name)
+  (if (ach:ax-p) (ach:ensure-layer doc name) (ach:l-ensure-layer name)))
+(defun ach:x-previous-inserts (bname)
+  (if (ach:ax-p) (ach:previous-inserts bname) (ach:l-previous-inserts bname)))
+;; Returns the insert (VLA object or ename), or nil / an error object.
+(defun ach:x-insert (ms bname pt sc rot)
+  (if (ach:ax-p)
+    (vl-catch-all-apply 'vla-InsertBlock
+      (list ms (vlax-3d-point (car pt) (cadr pt) (caddr pt)) bname sc sc sc rot))
+    (vl-catch-all-apply 'ach:l-insert (list bname pt sc rot))))
+(defun ach:x-put-layer (ref lay)
+  (if (ach:ax-p) (vla-put-Layer ref lay) (ach:l-mod ref (list (cons 8 lay)))))
+(defun ach:x-set-att (ref tag val)
+  (if (ach:ax-p) (ach:set-att ref tag val) (ach:l-set-att ref tag val)))
+(defun ach:x-att-styles (ref defs)
+  (if (ach:ax-p) (ach:att-styles ref defs) (ach:l-att-styles ref defs)))
+(defun ach:x-upright-atts (ref defs)
+  (if (ach:ax-p) (ach:upright-atts ref defs) (ach:l-upright-atts ref defs)))
+(defun ach:x-topbottom-atts (ref ext)
+  (if (ach:ax-p) (ach:topbottom-atts ref ext) (ach:l-topbottom-atts ref ext)))
+(defun ach:x-flip-atts (ref)
+  (if (ach:ax-p) (ach:flip-atts ref) (ach:l-flip-atts ref)))
+(defun ach:x-ename (ref)
+  (if (ach:ax-p) (vlax-vla-object->ename ref) ref))
+
+
 ;;; ======================== label side (auto flip) =========================
 
 ;; Normalise a layout value -> "side" or "topbottom".
@@ -603,6 +1174,7 @@
   (cons (reverse out) nfb))
 
 ;;; ============================ core command ===============================
+(setq *ach:stage* "core command")
 
 (defun achoists-run (csvpath singles colspec dept suffix deleteold)
   (achoists-run-ex csvpath singles colspec dept suffix deleteold nil))
@@ -619,18 +1191,20 @@
                           x y z w sv-names sv-vals undo-open lay msg missing
                           layout tbs ext defs plan nfb rot rotsym rrad
                           sfix stxt)
+  (setq *ach:eng* (ach:engine (cdr (assoc "engine" opts))))
   (setq sv-names '("CMDECHO" "OSMODE" "ATTREQ" "ATTDIA")
         sv-vals  (mapcar 'getvar sv-names))
   (defun *error* (m)
     (mapcar 'setvar sv-names sv-vals)
-    (if undo-open (vla-EndUndoMark doc))
+    (if undo-open (ach:x-undo-end doc))
     (if (not (member m '("Function cancelled" "quit / exit abort")))
       (princ (strcat "\nACHOISTS error: " m)))
     (princ))
 
-  (setq acad (vlax-get-acad-object)
-        doc  (vla-get-ActiveDocument acad)
-        ms   (vla-get-ModelSpace doc))
+  (if (ach:ax-p)
+    (setq acad (vlax-get-acad-object)
+          doc  (vla-get-ActiveDocument acad)
+          ms   (vla-get-ModelSpace doc)))
   (cond
     ;; ---------- validate input
     ((not (and csvpath (findfile csvpath)))
@@ -671,42 +1245,42 @@
        (T
         (setvar "CMDECHO" 0) (setvar "OSMODE" 0)
         (setvar "ATTREQ" 0)  (setvar "ATTDIA" 0)
-        (vla-StartUndoMark doc) (setq undo-open T)
+        (ach:x-undo-start doc) (setq undo-open T)
 
         ;; ---------- block definition
-        (setq bname (ach:find-block doc))
+        (setq bname (ach:x-find-block doc))
         (if (not bname)
           (progn
             (setq bfile (cdr (assoc "blockfile" opts)))
             (if (not (and bfile (findfile bfile))) (setq bfile (ach:find-block-file csvpath)))
-            (if bfile (setq bname (ach:load-block-file doc ms bfile)))))
+            (if bfile (setq bname (ach:x-load-block-file doc ms bfile)))))
         (if (not bname)
           (progn
             (mapcar 'setvar sv-names sv-vals)
-            (vla-EndUndoMark doc) (setq undo-open nil)
+            (ach:x-undo-end doc) (setq undo-open nil)
             (cons nil (strcat "Hoist block '" *ach:block-name* "' is not in the drawing and "
                               *ach:block-file* " was not found.")))
           (progn
-            (setq blk    (vla-Item (vla-get-Blocks doc) bname)
-                  bunits (vla-get-Units blk))
+            (setq blk    (ach:x-block doc bname)
+                  bunits (ach:x-block-units blk))
             (if (not (ach:metres-per-unit bunits)) (setq bunits *ach:block-default-units*))
             ;; block units -> drawing units, times user symbol scale
             (setq sc (* (ach:metres-per-unit bunits) factor scale))
-            (setq nfill (if *ach:fill-byblock* (ach:fills-byblock blk) 0))
-            (setq tags (ach:block-tags blk))
-            (setq ext  (ach:block-extents blk)
-                  defs (ach:block-attdefs blk)
+            (setq nfill (if *ach:fill-byblock* (ach:x-fills-byblock blk) 0))
+            (setq tags (ach:x-block-tags blk))
+            (setq ext  (ach:x-block-extents blk)
+                  defs (ach:x-block-attdefs blk)
                   sfix 0)
             ;; text style(s) of the attribute definitions: check / repair font
             (setq stxt '())
             (foreach d defs
               (if (and (nth 4 d) (not (assoc (strcase (nth 4 d)) stxt)))
-                (setq stxt (cons (cons (strcase (nth 4 d)) (ach:check-style doc (nth 4 d))) stxt))))
+                (setq stxt (cons (cons (strcase (nth 4 d)) (ach:x-check-style doc (nth 4 d))) stxt))))
 
             ;; ---------- layer, xdata app, old inserts
-            (setq lay (ach:ensure-layer doc *ach:layer*))
+            (setq lay (ach:x-ensure-layer doc *ach:layer*))
             (regapp *ach:xdata-app*)
-            (setq old (ach:previous-inserts bname) removed 0)
+            (setq old (ach:x-previous-inserts bname) removed 0)
             (if deleteold
               (foreach e old (if (entdel e) (setq removed (1+ removed)))))
 
@@ -723,23 +1297,22 @@
                     y (* (ach:num row "y_m") factor)
                     z (* (ach:num row "z_m") factor)
                     w (ach:num row "weight_kg"))
-              (setq ref (vl-catch-all-apply 'vla-InsertBlock
-                          (list ms (vlax-3d-point x y z) bname sc sc sc rrad)))
-              (if (vl-catch-all-error-p ref)
+              (setq ref (ach:x-insert ms bname (list x y z) sc rrad))
+              (if (or (not ref) (vl-catch-all-error-p ref))
                 (setq failed (1+ failed))
                 (progn
-                  (vla-put-Layer ref *ach:layer*)
-                  (ach:set-att ref *ach:tag-dept* dept)
-                  (ach:set-att ref *ach:tag-load* (ach:fmt-load w suffix))
-                  (setq sfix (+ sfix (ach:att-styles ref defs)))
-                  (if (/= rrad 0.0) (ach:upright-atts ref defs))
-                  (cond ((= (cdr (assoc row plan)) "topbottom") (ach:topbottom-atts ref ext))
-                        ((= (cdr (assoc row plan)) "left") (ach:flip-atts ref)))
-                  (ach:tag-insert (vlax-vla-object->ename ref) colspec row)
+                  (ach:x-put-layer ref *ach:layer*)
+                  (ach:x-set-att ref *ach:tag-dept* dept)
+                  (ach:x-set-att ref *ach:tag-load* (ach:fmt-load w suffix))
+                  (setq sfix (+ sfix (ach:x-att-styles ref defs)))
+                  (if (/= rrad 0.0) (ach:x-upright-atts ref defs))
+                  (cond ((= (cdr (assoc row plan)) "topbottom") (ach:x-topbottom-atts ref ext))
+                        ((= (cdr (assoc row plan)) "left") (ach:x-flip-atts ref)))
+                  (ach:tag-insert (ach:x-ename ref) colspec row)
                   (setq placed (1+ placed)))))
 
-            (vla-Regen doc acAllViewports)
-            (vla-EndUndoMark doc) (setq undo-open nil)
+            (ach:x-regen doc)
+            (ach:x-undo-end doc) (setq undo-open nil)
             (mapcar 'setvar sv-names sv-vals)
 
             ;; ---------- summary
@@ -780,9 +1353,15 @@
             (cons T msg))))))))
 
 ;;; ============================ dialog (DCL) ===============================
+(setq *ach:stage* "dialog (DCL)")
 
 (setq *ach:side-modes*  '("default" "auto" "right" "left" "topbottom"))
 (setq *ach:side-labels* '("as layout" "auto L/R" "right" "left" "top/bottom"))
+
+;; edit_width: the Mac edit_box tile does not list it (Mac DCL reference,
+;; edit_box), so on a Mac the edit box just fills its row.
+(defun ach:dcl-ew (n)
+  (if (ach:mac-p) "" (strcat "edit_width = " (itoa n) "; ")))
 
 (defun ach:write-dcl (n / path f i)
   (setq path (vl-filename-mktemp "achoists" nil ".dcl"))
@@ -809,7 +1388,7 @@
       f)
     (setq i (1+ i)))
   (foreach l
-    '("  }"
+    (list "  }"
       "  : boxed_radio_row {"
       "    key = \"layout\";"
       "    label = \"Label layout  (sources set to 'as layout')\";"
@@ -823,13 +1402,13 @@
       "      : image { key = \"sw\"; width = 6; height = 1.5; fixed_width = true; fixed_height = true; color = 1; }"
       "      : text { key = \"coltxt\"; width = 30; }"
       "    }"
-      "    : edit_box { key = \"dept\"; label = \"Department text:\"; edit_width = 24; }"
-      "    : edit_box { key = \"suffix\"; label = \"Weight suffix:\"; edit_width = 12; }"
-      "    : edit_box { key = \"scale\"; label = \"Symbol scale (1 = drawn size):\"; edit_width = 12; }"
+      (strcat "    : edit_box { key = \"dept\"; label = \"Department text:\"; " (ach:dcl-ew 24) "}")
+      (strcat "    : edit_box { key = \"suffix\"; label = \"Weight suffix:\"; " (ach:dcl-ew 12) "}")
+      (strcat "    : edit_box { key = \"scale\"; label = \"Symbol scale (1 = drawn size):\"; " (ach:dcl-ew 12) "}")
       "  }"
       "  : boxed_column {"
       "    label = \"Rotation  (applied before inserting)\";"
-      "    : edit_box { key = \"rot\"; label = \"Rotate layout about 0,0 (degrees, CCW +):\"; edit_width = 12; }"
+      (strcat "    : edit_box { key = \"rot\"; label = \"Rotate layout about 0,0 (degrees, CCW +):\"; " (ach:dcl-ew 12) "}")
       "    : toggle { key = \"rotsym\"; label = \"Rotate symbols too  (labels stay upright)\"; }"
       "  }"
       "  : row {"
@@ -844,10 +1423,15 @@
   path)
 
 (defun ach:dlg-swatch (/ aci)
-  (setq aci (cdr (assoc 62 *ach:dlg-color*)))
-  (start_image "sw")
-  (fill_image 0 0 (dimx_tile "sw") (dimy_tile "sw") aci)
-  (end_image)
+  (setq aci (cond ((cdr (assoc 62 *ach:dlg-color*))) (7)))
+  ;; image tile + fill_image exist on Mac too; guarded so a drawing problem
+  ;; there can never stop the dialog (the ACI/RGB text is shown anyway).
+  (vl-catch-all-apply
+    '(lambda ()
+       (start_image "sw")
+       (fill_image 0 0 (dimx_tile "sw") (dimy_tile "sw") aci)
+       (end_image))
+    nil)
   (set_tile "coltxt" (ach:color-text *ach:dlg-color*)))
 
 (defun ach:dlg-pick-color (/ c init)
@@ -880,7 +1464,8 @@
       (done_dialog 1))))
 
 ;; Returns (singles color dept suffix deleteold scale sides layout
-;;          rotation rotate-symbols) or nil.
+;;          rotation rotate-symbols), nil when cancelled, or the symbol
+;; FAILED when load_dialog / new_dialog did not work.
 (defun ach:run-dialog (csvpath names meta factor nold / dcl id i e lab res)
   (setq *ach:dlg-names* names
         *ach:dlg-idx* '() *ach:dlg-result* nil)
@@ -900,7 +1485,7 @@
         (setq lab (strcat src (if (/= (nth 3 e) "") (strcat "  (" (nth 3 e) ")") "")))
         (if (not (ach:can-single meta src)) (setq lab (strcat lab "  - no single pick")))
         (set_tile (strcat "n" (itoa i)) lab)
-        (set_tile (strcat "s" (itoa i)) "0")
+        (set_tile (strcat "s" (itoa i)) (if (member src *ach:auto-singles*) "1" "0"))
         (if (not (ach:can-single meta src)) (mode_tile (strcat "s" (itoa i)) 1))
         (start_list (strcat "p" (itoa i)))
         (mapcar 'add_list *ach:side-labels*)
@@ -925,12 +1510,177 @@
     (progn
       (if (>= id 0) (unload_dialog id))
       (vl-file-delete dcl)
-      (alert "ACHOISTS: could not load the dialog.")
-      nil)))
+      'failed)))
+
+;;; ===================== command-line prompts (AutoCAD for Mac) ============
+(setq *ach:stage* "command-line prompts (AutoCAD for Mac)")
+;; Same answers as the dialog, asked on the command line. Every prompt
+;; shows its default in <>; Enter keeps it. Used by ACHOISTS on a Mac and by
+;; ACHOISTS_CLI everywhere.
+
+;; Sources that hang on one motor in the CSV itself: a single pick and no
+;; rear pick (a Soundvision 1-motor source = one "front" row + its "single"
+;; twin). ArrayCalc frames always list front + rear, so they stay unticked:
+;; the CSV cannot tell whether such a frame is really hung on one point.
+(defun ach:auto-singles (rows names meta / rear)
+  (foreach r rows
+    (if (= (ach:kind r) "rear") (setq rear (cons (ach:get r "source") rear))))
+  (vl-remove-if-not '(lambda (s) (and (ach:can-single meta s) (not (member s rear)))) names))
+
+;; Colour name / ACI number -> ACI integer, or nil.
+(defun ach:parse-color (s / k)
+  (setq k (ach:clean-key s))
+  (cond ((= k "") nil)
+        ((cdr (assoc k *ach:color-names*)))
+        ((and (wcmatch k "#,##,###") (<= 1 (atoi k) 255)) (atoi k))))
+
+;; Colour spec -> what the prompt shows as default: name, number or RGB.
+(defun ach:color-label (c / aci nm)
+  (setq c (ach:color-spec c))
+  (if (and (not (assoc 420 c)) (not (assoc 430 c)) (setq aci (cdr (assoc 62 c))))
+    (if (setq nm (car (vl-remove-if-not '(lambda (p) (= (cdr p) aci)) *ach:color-names*)))
+      (car nm)
+      (itoa aci))
+    (ach:color-text c)))
+
+(defun ach:color-names-text ()
+  "red, yellow, green, cyan, blue, magenta, white, grey, lightgrey, orange - or a number 1-255 (Dialog opens the colour window)")
+
+(defun ach:ask-color (cur / s n c done)
+  (while (not done)
+    (setq s (ach:trim (getstring T (strcat "\nSolid colour - name or number 1-255 <"
+                                           (ach:color-label cur) ">: "))))
+    (cond
+      ((= s "") (setq c cur done T))
+      ((member (strcase s T) '("dialog" "d"))
+       (if (setq n (acad_truecolordlg (last (ach:color-spec cur)) nil))
+         (setq c n done T)))
+      ((setq n (ach:parse-color s)) (setq c (list (cons 62 n)) done T))
+      (T (princ (strcat "\nUnknown colour, try again. Valid: " (ach:color-names-text) ".")))))
+  c)
+
+;; Comma/space separated numbers -> list of integers, or nil if any token is bad.
+(defun ach:parse-numbers (s / out tok ok)
+  (setq ok T)
+  (foreach tok (ach:split-list (vl-string-translate " ;" ",," s))
+    (if (and (wcmatch tok "#,##,###") (> (atoi tok) 0))
+      (setq out (cons (atoi tok) out))
+      (setq ok nil)))
+  (if ok (reverse out)))
+
+(defun ach:split-list (s / out cur c)
+  (setq cur "")
+  (foreach c (vl-string->list s)
+    (if (= c 44)
+      (setq out (cons cur out) cur "")
+      (setq cur (strcat cur (chr c)))))
+  (vl-remove "" (reverse (cons cur out))))
+
+(defun ach:ask-singles (names meta defaults / i e can s nums bad done res deftxt)
+  (princ "\nSources in the CSV:")
+  (setq i 1)
+  (foreach src names
+    (setq e (assoc src meta))
+    (princ (strcat "\n  " (itoa i) "  " src
+                   (if (/= (nth 3 e) "") (strcat "  (" (nth 3 e) ")") "")
+                   (if (ach:can-single meta src) "" "  - no single pick")))
+    (setq i (1+ i)))
+  (setq can (vl-remove-if-not '(lambda (s) (ach:can-single meta s)) names))
+  (if (not can)
+    (progn (princ "\nNo source has a single pick: all hoists go on front + rear picks.") nil)
+    (progn
+      (setq deftxt (if defaults
+                     (ach:join (mapcar '(lambda (s) (itoa (1+ (vl-position s names)))) defaults) ",")
+                     "none"))
+      (while (not done)
+        (setq s (ach:trim (getstring T (strcat "\nSingle-point sources - numbers from the list, e.g. 3,4 (0 = none) <"
+                                                 deftxt ">: "))))
+        (cond
+          ((= s "") (setq res defaults done T))
+          ((member (strcase s T) '("0" "none" "-")) (setq res nil done T))
+          ((not (setq nums (ach:parse-numbers s)))
+           (princ "\nType numbers from the list, separated by commas (e.g. 3,4), 0 for none, or Enter for the default."))
+          ((setq bad (vl-remove-if '(lambda (n) (and (<= n (length names))
+                                                     (ach:can-single meta (nth (1- n) names))))
+                                   nums))
+           (princ (strcat "\nNot a source with a single pick: "
+                          (ach:join (mapcar 'itoa bad) ", ")
+                          ". Pick from: "
+                          (ach:join (mapcar '(lambda (s) (itoa (1+ (vl-position s names)))) can) ", ")
+                          ".")))
+          (T (setq res (mapcar '(lambda (n) (nth (1- n) names)) nums) done T))))
+      ;; keep the CSV order, like the dialog
+      (vl-remove-if-not '(lambda (s) (member s res)) names))))
+
+(defun ach:ask-yesno (msg default / k)
+  (initget "Yes No")
+  (setq k (getkword (strcat msg " [Yes/No] <" (if default "Yes" "No") ">: ")))
+  (cond ((= k "Yes") T) ((= k "No") nil) (T default)))
+
+;; Returns the same list as ach:run-dialog:
+;; (singles color dept suffix deleteold scale sides layout rotation rotate-symbols)
+(defun ach:run-prompts (csvpath names meta factor nold / singles layout k color dept
+                        suffix s scale rot rotsym del)
+  (princ (strcat "\nCSV: " csvpath
+                 "\nDrawing units: " (ach:unit-name (getvar "INSUNITS"))
+                 "  ->  1 m = " (rtos factor 2 4) " units."))
+  ;; 1. single-point sources
+  (setq singles (ach:ask-singles names meta *ach:auto-singles*))
+  ;; 2. label layout
+  (initget "Side Topbottom")
+  (setq k (getkword (strcat "\nLabels [Side/Topbottom] <"
+                            (if (= *ach:dlg-layout* "topbottom") "Topbottom" "Side") ">: ")))
+  (setq layout (cond ((= k "Side") "side") ((= k "Topbottom") "topbottom") (T *ach:dlg-layout*)))
+  ;; 3. colour
+  (setq color (ach:ask-color *ach:dlg-color*))
+  ;; 4. texts
+  (setq s (getstring T (strcat "\nDepartment text <" *ach:dlg-dept* ">: ")))
+  (setq dept (if (= (ach:trim s) "") *ach:dlg-dept* s))
+  ;; AutoCAD drops leading spaces from typed input, so quotes keep them: " kg"
+  (setq s (getstring T (strcat "\nWeight suffix after the kg number, quote it to keep spaces <\""
+                               *ach:dlg-suffix* "\">: ")))
+  (setq suffix (cond ((= s "") *ach:dlg-suffix*)
+                     ((and (> (strlen s) 1) (= (substr s 1 1) "\"")
+                           (= (substr s (strlen s)) "\""))
+                      (substr s 2 (- (strlen s) 2)))
+                     (T s)))
+  ;; 5. symbol scale (> 0)
+  (initget 6)
+  (setq scale (getreal (strcat "\nSymbol scale, 1 = drawn size <" (rtos *ach:dlg-scale* 2 3) ">: ")))
+  (if (not scale) (setq scale *ach:dlg-scale*))
+  ;; 6. rotation
+  (setq rot (getreal "\nRotate layout about 0,0 - degrees, CCW + <0>: "))
+  (if (not rot) (setq rot 0.0))
+  (setq rotsym (if (equal rot 0.0 1e-9)
+                 nil
+                 (ach:ask-yesno "\nRotate symbols too (labels stay upright)?" nil)))
+  ;; 7. earlier hoists
+  (setq del (if (> nold 0)
+              (ach:ask-yesno (strcat "\nDelete " (itoa nold) " hoist insert(s) from previous runs?") T)
+              nil))
+  (list singles color dept suffix del scale
+        (mapcar '(lambda (src) (cons src "default")) names)
+        layout (float rot) rotsym))
 
 ;;; ========================= interactive command ===========================
+(setq *ach:stage* "interactive command")
 
-(defun c:ACHOISTS (/ *error* csv data rows names meta factor u res r nold
+(setq *ach:auto-singles* nil)
+
+;; Command-line CSV path (used when FILEDIA = 0 in prompt mode).
+(defun ach:ask-path (start / p)
+  (if (and start (not (findfile start))) (setq start nil))
+  (setq p (getstring T (strcat "\nCSV file path"
+                               (if start (strcat " <" start ">") "") ": ")))
+  (setq p (vl-string-trim " \t\"" p))
+  (cond
+    ((= p "") start)
+    ((findfile p))
+    ((findfile (strcat p ".csv")))
+    (T (princ (strcat "\nFile not found: " p)) nil)))
+
+;; UI = "dialog" (DCL) or "prompts" (command line).
+(defun ach:command (ui / *error* csv data rows names meta factor u res r nold
                      doc bname bfile old-cmdecho start s)
   (setq old-cmdecho (getvar "CMDECHO"))
   (defun *error* (m)
@@ -939,7 +1689,8 @@
       (princ (strcat "\nACHOISTS error: " m)))
     (princ))
   (setvar "CMDECHO" 0)
-  (setq doc (vla-get-ActiveDocument (vlax-get-acad-object)))
+  (setq *ach:eng* (ach:engine nil))
+  (if (ach:ax-p) (setq doc (vla-get-ActiveDocument (vlax-get-acad-object))))
 
   ;; remembered settings
   (setq *ach:dlg-dept*   (cond ((getenv "ACHOISTS_Dept")) (*ach:default-dept*)))
@@ -956,7 +1707,11 @@
   ;; 1. CSV - start in the drawing's folder (or the last CSV's folder)
   (setq start (getenv "ACHOISTS_LastCSV"))
   (if (not (and start (findfile start))) (setq start (getvar "DWGPREFIX")))
-  (setq csv (getfiled "ArrayCalc hoist CSV" start "csv" 0))
+  (setq csv
+    (if (and (= ui "prompts") (= (getvar "FILEDIA") 0))
+      ;; FILEDIA 0 + prompt mode: type the path (AutoCAD convention)
+      (ach:ask-path start)
+      (getfiled "ArrayCalc hoist CSV" start "csv" 0)))
   (cond
     ((not csv) (princ "\nACHOISTS: cancelled."))
     ((not (setq data (ach:read-csv csv))) (alert (strcat "Cannot read CSV:\n" csv)))
@@ -964,6 +1719,7 @@
     (T
      (setenv "ACHOISTS_LastCSV" csv)
      (setq data (ach:sources rows) names (car data) meta (cadr data))
+     (setq *ach:auto-singles* (ach:auto-singles rows names meta))
      ;; 2. units
      (setq factor (ach:factor-from-insunits))
      (if (not factor)
@@ -976,7 +1732,7 @@
                                     ("meTers" . 1.0) ("Inches" . 39.37007874015748)
                                     ("Feet" . 3.280839895013123)))))))
      ;; 3. block present? else find / ask for the block DWG
-     (setq bname (ach:find-block doc))
+     (setq bname (ach:x-find-block doc))
      (if (not bname)
        (progn
          (setq bfile (ach:find-block-file csv))
@@ -986,9 +1742,19 @@
      (if (and (not bname) (not bfile))
        (princ "\nACHOISTS: no hoist block - cancelled.")
        (progn
-         (setq nold (length (ach:previous-inserts (cond (bname) (*ach:block-name*)))))
-         ;; 4. dialog
-         (setq res (ach:run-dialog csv names meta factor nold))
+         (setq nold (length (ach:x-previous-inserts (cond (bname) (*ach:block-name*)))))
+         ;; 4. dialog / command-line prompts
+         (setq res (if (= ui "prompts")
+                     (ach:run-prompts csv names meta factor nold)
+                     (ach:run-dialog csv names meta factor nold)))
+         (if (eq res 'failed)
+           (if (or (ach:mac-p) (not (ach:activex-p)))
+             ;; Mac: no dialog -> the same questions on the command line
+             (progn
+               (princ "\nACHOISTS: the dialog could not be loaded - using command-line prompts.")
+               (setq ui "prompts"
+                     res (ach:run-prompts csv names meta factor nold)))
+             (progn (alert "ACHOISTS: could not load the dialog.") (setq res nil))))
          (if (not res)
            (princ "\nACHOISTS: cancelled.")
            (progn
@@ -1007,11 +1773,18 @@
                                             (cons "layout" (nth 7 res))
                                             (cons "rotation" (nth 8 res))
                                             (cons "rotate-symbols" (nth 9 res))
-                                            (cons "blockfile" bfile))))
-             (alert (strcat (if (car r) "ACHOISTS done\n\n" "ACHOISTS - nothing placed\n\n")
-                            (cdr r)))))))))
+                                            (cons "blockfile" bfile)
+                                            (cons "engine" *ach:eng*))))
+             (if (= ui "prompts")
+               (princ (strcat (if (car r) "\n\nACHOISTS done\n" "\n\nACHOISTS - nothing placed\n")
+                              (cdr r)))
+               (alert (strcat (if (car r) "ACHOISTS done\n\n" "ACHOISTS - nothing placed\n\n")
+                              (cdr r))))))))))
   (setvar "CMDECHO" old-cmdecho)
   (princ))
 
-(princ "\nPlaceArrayCalcHoists loaded - type ACHOISTS.")
+;; Everything loaded: the commands defined at the top can now run.
+(setq *ach:loaded* T *ach:stage* "done")
+(princ (strcat "\nACHOISTS loaded (" (if (ach:mac-p) "Mac" "Windows") ")"
+               " - type ACHOISTS (or ACHOISTS_CLI for command-line prompts)."))
 (princ)

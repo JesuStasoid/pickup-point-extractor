@@ -1,13 +1,13 @@
-# ArrayCalc hoists → AutoCAD 2025 (`ACHOISTS`)
+# AutoCAD hoist placement (`ACHOISTS`)
 
-This is the AutoCAD version of `vw-scripts/PlaceArrayCalcHoists.py`. It reads the CSV made by
-`vw-scripts/extract_arraycalc_hoists.py` (or `Extract ArrayCalc Hoists.bat`) and places one hoist
-block for each pick point, at the hoist's real X, Y **and Z**.
+Release files in this folder: `PlaceArrayCalcHoists.lsp` and `HoistPoint.dwg`. Install and use them from the manuals: **[English](../MANUAL_EN.md)** · **[Русский](../MANUAL_RU.md)**.
+
+The same script runs on AutoCAD for Windows and AutoCAD for Mac. `ACHOISTS` opens the dialog; `ACHOISTS_CLI` uses the command line. It reads the hoist CSV from Pick-up point extractor and places one block per pick at X, Y, and Z.
 
 ## Files
 | File | What it is |
 |---|---|
-| `PlaceArrayCalcHoists.lsp` | The tool (UTF-8). Command **`ACHOISTS`** |
+| `PlaceArrayCalcHoists.lsp` | The tool (plain ASCII). Commands **`ACHOISTS`** and **`ACHOISTS_CLI`** |
 | `HoistPoint.dwg` | The hoist symbol, drawn in mm: circle, two solid quarters, crosshair, attributes `PT-NAME` (department) and `LOAD` (weight). It's loaded into the drawing as block **`точка`** |
 | `dev/` | Only needed to rebuild the block or re-test: `make_block.lsp`, the original DWG from your friend, `test_core.lsp`, `test_layout.lsp` |
 

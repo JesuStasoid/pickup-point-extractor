@@ -2,16 +2,16 @@
 # the Apple Silicon runner from python.org's fat Python + Tcl/Tk 8.6.
 # macos-26 is pinned: macos-latest may move to macOS 27, where python.org
 # warns that Tk file dialogs hang.
+# Release publishing is release.yml (tag v1.0). This file only builds the two apps.
 name: Build
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
+  workflow_call:
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
   group: build-${{ github.ref }}
@@ -151,49 +151,3 @@ jobs:
           path: "extractor/Pick-up point extractor v1.0.exe"
           if-no-files-found: error
           compression-level: 0
-
-  release:
-    name: GitHub Release
-    needs: [macos, windows]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: "Pick-up point extractor v1.0.*"
-          path: release-assets
-          merge-multiple: true
-
-      - name: Attach dmg and exe to the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          files=(release-assets/*.dmg release-assets/*.exe)
-          if [[ ${#files[@]} -lt 2 ]]; then
-            echo "expected the dmg and the exe, found: ${files[*]:-<none>}" >&2
-            ls -lR release-assets >&2 || true
-            exit 1
-          fi
-          ls -lh "${files[@]}"
-          notes=$(cat <<EOF
-          Pick-up point extractor ${GITHUB_REF_NAME}
-
-          - \`Pick-up point extractor v1.0.dmg\` — macOS universal2 (Apple Silicon and Intel). Ad-hoc signed, no Developer ID. First launch after download: Control-click the app and choose Open.
-          - \`Pick-up point extractor v1.0.exe\` — Windows onefile, no console.
-
-          Minimum macOS is 11 (both Intel and Apple Silicon).
-          EOF
-          )
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" "${files[@]}" \
-              --title "$GITHUB_REF_NAME" \
-              --notes "$notes" \
-              --verify-tag
-          fi
