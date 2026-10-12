@@ -1,4 +1,5 @@
-# Pick-up point extractor
+# Набор утилит и скриптов для переноса точек подвеса из проектов Аррейкалька или репортов саундвижена в ВВ или кад вместе с весами.
+# Pick-up point extractor and placement
 
 Extract pickup points from an L-Acoustics Soundvision report or a d&b ArrayCalc project, then place them in Vectorworks or AutoCAD.
 
@@ -6,6 +7,6 @@ Extract pickup points from an L-Acoustics Soundvision report or a d&b ArrayCalc 
 
 Video: https://www.youtube.com/watch?v=_y_PgrNg_jc
 
-- `extractor/` — desktop app. GitHub Actions builds `Pick-up_point_extractor_v1.0.exe` and `Pick-up_point_extractor_v1.0.dmg`.
-- `vectorworks/` — Vectorworks 2026 script and data tag style.
-- `autocad/` — AutoCAD script and hoist block.
+Сделано с гроком, потому что ладно питон, но AutoLISP это вообще хрен пойми что такое
+
+Обнаружите баги или недочеты - напишите мне, будем исправлять
