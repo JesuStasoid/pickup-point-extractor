@@ -12,5 +12,6 @@ venv/
 # client data / outputs
 *.dbpr
 *.pdf
+!tests/fixtures/SUBREPORT.pdf
 *_hoist_picks*.csv
 *_extractor_error.log

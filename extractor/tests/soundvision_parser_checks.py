@@ -120,5 +120,32 @@ r = sv.parse_report_text(rep(body=body))
 ok(r.rows[0]["x_m"] == 1.5, "comma decimal")
 ok(any(x["source"] == "A (2)" for x in r.rows), "duplicate source renamed")
 ok(any("!= total weight" in w for w in r.warnings), "front+rear vs total check")
+
+# Real Soundvision sub report: KS28 uses Front left / Front right, KS21 uses Front / Rear.
+pdf = pathlib.Path(__file__).resolve().parent / "fixtures" / "SUBREPORT.pdf"
+sub = sv.extract_soundvision_report(pdf)
+want = [
+    ("KS28 1", "front", 0.6, -0.35, 10.06, "EXT", 165.5),
+    ("KS28 1", "rear", -0.6, -0.35, 10.06, "EXT", 165.5),
+    ("KS21 1", "front", 10, 0.02, 12.04, "F", 87.8),
+    ("KS21 1", "rear", 10, -0.62, 12.04, "R", 78.2),
+]
+got = [(x["source"], x["pick_kind"], x["x_m"], x["y_m"], x["z_m"], x["hole"], x["weight_kg"]) for x in sub.rows]
+ok(got == want, "SUBREPORT.pdf KS28 left/right and KS21 front/rear")
+
+mismatch = """1. Source: SUB
+Configuration: vertical, flown array
+# motors: 2
+Front left pickup position (X; Y; Z, m): EXT (0.6; -0.35; 10)
+Front right pickup position (X; Y; Z, m): EXT (-0.6; -0.35; 10)
+Front left motor load: 100 kg
+Front right motor load: 100 kg
+Total weight (Enclosures + Frames): 400 kg
+"""
+mm = sv.parse_report_text(rep(body=mismatch))
+ok([x["pick_kind"] for x in mm.rows] == ["front", "rear"]
+   and mm.rows[0]["weight_kg"] == 100 and mm.rows[1]["weight_kg"] == 100,
+   "left/right pair keeps each load")
+ok(any("left+right load" in w for w in mm.warnings), "left+right vs total warning")
 print("ALL PASS" if not ok.fail else "SOME FAILED")
 sys.exit(1 if ok.fail else 0)
