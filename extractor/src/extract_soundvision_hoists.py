@@ -13,6 +13,9 @@ Conventions:
     pickup positions. Stacked / motor-less sources are skipped and listed.
   - 2-motor source -> "front" + "rear" rows, weight_kg = Front/Rear motor load,
     single_available = 0 (Soundvision gives no single-pick option).
+    A flown sub that prints "Front left" and "Front right" pickups (KS28) is
+    the same pair: left is written as front, right as rear, each with its
+    own motor load.
   - 1-motor source (Soundvision prints "# motors: 1", a single "Front pickup
     position" line and a single "Front motor load" line) -> one "front" row
     (placed by default) + an identical "single" row with single_available = 1.
@@ -144,14 +147,14 @@ _RE_CONFIG = re.compile(r"^\s*Configuration\s*:\s*(.+?)\s*$", re.I | re.M)
 _RE_BUMPER = re.compile(r"^\s*Bumper\s*:\s*(.+?)\s*$", re.I | re.M)
 _RE_MOTORS = re.compile(r"#\s*motors\s*:\s*(\d+)", re.I)
 _RE_PICK = re.compile(
-    r"(Front|Rear)\s+pickup\s+position\s*"
+    r"((?:Front|Rear)(?:\s+(?:left|right))?)\s+pickup\s+position\s*"
     r"\(\s*X\s*;\s*Y\s*;\s*Z\s*,\s*([^)\s]+)\s*\)\s*:\s*"
     r"(?:([A-Za-z0-9#\-]+)\s*)?"
     r"\(\s*(" + _NUM + r")\s*;\s*(" + _NUM + r")\s*;\s*(" + _NUM + r")\s*\)",
     re.I,
 )
 _RE_LOAD = re.compile(
-    r"(Front|Rear)\s+motor\s+load\s*:\s*(" + _NUM + r")\s*([A-Za-z]+)", re.I)
+    r"((?:Front|Rear)(?:\s+(?:left|right))?)\s+motor\s+load\s*:\s*(" + _NUM + r")\s*([A-Za-z]+)", re.I)
 _RE_TOTAL = re.compile(
     r"Total\s+weight\s*\(\s*Enclosures\s*\+\s*Frames\s*\)\s*:\s*(" + _NUM + r")\s*([A-Za-z]+)",
     re.I)
@@ -232,6 +235,13 @@ def parse_report_text(text: str) -> SVResult:
     return SVResult(rows=rows, sources=sources, skipped=skipped, warnings=warnings, info=info)
 
 
+def _kind(side: str) -> str:
+    """'Front' -> 'front', 'Front left' -> 'front_left' (flown subs, e.g. KS28,
+    hang from two side-by-side pickups labelled left/right instead of
+    front/rear)."""
+    return "_".join(side.lower().split())
+
+
 def _parse_source(name, body, group, gi, idx, hdr_len, hdr_wt, warnings) -> SVSource:
     s = SVSource(name=name, group=group, group_index=gi, index=idx)
     where = f"source '{name}'"
@@ -250,7 +260,7 @@ def _parse_source(name, body, group, gi, idx, hdr_len, hdr_wt, warnings) -> SVSo
             raise SoundvisionParseError(
                 f"{where}: pickup unit '{ustr}' differs from header distance unit '{hdr_len}'.")
         k = _unit(ustr, LENGTH_UNITS, "distance", where)
-        kind = side.lower()
+        kind = _kind(side)
         if "," in x + y + z:
             warnings.append(f"{where}: comma in pickup coordinates read as a decimal point - check.")
         s.picks.append((kind, hole or "", _num(x) * k, _num(y) * k, _num(z) * k))
@@ -260,7 +270,7 @@ def _parse_source(name, body, group, gi, idx, hdr_len, hdr_wt, warnings) -> SVSo
         if hdr_wt and ustr.lower().rstrip("s") != hdr_wt.lower().rstrip("s"):
             raise SoundvisionParseError(
                 f"{where}: load unit '{ustr}' differs from header weight unit '{hdr_wt}'.")
-        kind = side.lower()
+        kind = _kind(side)
         if "," in val:
             warnings.append(f"{where}: load '{val}' has a comma - read as a decimal point, check "
                             "it is not a thousands separator.")
@@ -348,6 +358,27 @@ def _rows_from_sources(sources, warnings):
                 warnings.append(f"{where}: duplicate '{p[0]}' pickup line ignored.")
                 continue
             by_kind[p[0]] = p
+        # Left/right pairs (flown subs): Soundvision prints "Front left" /
+        # "Front right" pickups + loads. Emitted as the placers' front/rear
+        # pair (left -> front, right -> rear) so V3 / ACHOISTS place both.
+        lr = None
+        for pre in ("front", "rear"):
+            if f"{pre}_left" in by_kind and f"{pre}_right" in by_kind and \
+                    "front" not in by_kind and "rear" not in by_kind:
+                lr = (f"{pre}_left", f"{pre}_right")
+                break
+        if lr:
+            for kind, out in zip(lr, ("front", "rear")):
+                _, hole, x, y, z = by_kind[kind]
+                w = s.loads.get(kind)
+                if w is None:
+                    warnings.append(f"{where}: no {kind.replace('_', ' ')} motor load - weight_kg left blank.")
+                rows.append(base(out, hole, x, y, z, w, False))
+            if s.total_weight_kg is not None and lr[0] in s.loads and lr[1] in s.loads:
+                tot = s.loads[lr[0]] + s.loads[lr[1]]
+                if abs(tot - s.total_weight_kg) > max(2.0, 0.01 * s.total_weight_kg):
+                    warnings.append(f"{where}: left+right load {tot:g} kg != total weight {s.total_weight_kg:g} kg.")
+            continue
         for kind in ("front", "rear"):
             if kind not in by_kind:
                 warnings.append(f"{where}: no {kind} pickup position.")

@@ -1,5 +1,5 @@
-# Builds both apps, then publishes GitHub Release "Pick-up point extractor v1.0"
-# with exactly six assets. Tag pushes of v1.0 and workflow_dispatch both do this.
+# Builds both apps, then publishes GitHub Release "Pick-up point extractor v1.0.1"
+# with exactly six assets. Tag pushes of v1.0.1 and workflow_dispatch both do this.
 # Publishing lives here so build.yml cannot attach a different set.
 name: Release
 
@@ -7,14 +7,14 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - "v1.0"
+      - "v1.0.1"
 
 permissions:
   contents: write
   actions: write
 
 concurrency:
-  group: release-v1.0
+  group: release-v1.0.1
   cancel-in-progress: false
 
 jobs:
@@ -32,7 +32,7 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          pattern: "Pick-up_point_extractor_v1.0.*"
+          pattern: "Pick-up_point_extractor_v1.0.1.*"
           path: dist
           merge-multiple: true
 
@@ -43,14 +43,14 @@ jobs:
           set -euo pipefail
           export LC_ALL=C
 
-          tag="v1.0"
-          title="Pick-up point extractor v1.0"
+          tag="v1.0.1"
+          title="Pick-up point extractor v1.0.1"
           stage="${RUNNER_TEMP}/release-assets"
           notes="${RUNNER_TEMP}/release-notes.md"
           mkdir -p "$stage"
 
-          exe_name="Pick-up_point_extractor_v1.0.exe"
-          dmg_name="Pick-up_point_extractor_v1.0.dmg"
+          exe_name="Pick-up_point_extractor_v1.0.1.exe"
+          dmg_name="Pick-up_point_extractor_v1.0.1.dmg"
           cp "dist/${exe_name}" "$stage/"
           cp "dist/${dmg_name}" "$stage/"
           cp "vectorworks/PlaceArrayCalcHoistsV3.py" "$stage/"
@@ -89,8 +89,8 @@ jobs:
           find "$stage" -type f -printf '%f\n' | sort > "${RUNNER_TEMP}/staged.txt"
           cat > "${RUNNER_TEMP}/expected.txt" <<'EOF'
           HoistPoint.dwg
-          Pick-up_point_extractor_v1.0.dmg
-          Pick-up_point_extractor_v1.0.exe
+          Pick-up_point_extractor_v1.0.1.dmg
+          Pick-up_point_extractor_v1.0.1.exe
           PlaceArrayCalcHoists.lsp
           PlaceArrayCalcHoistsV3.py
           Sound_Hoist_Class.vwx
@@ -101,13 +101,8 @@ jobs:
             exit 1
           fi
 
-          repo_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
           cat > "$notes" <<EOF
-          Pick-up point extractor v1.0 reads an ArrayCalc project or a Soundvision report and writes a hoist CSV. The Vectorworks 2026 and AutoCAD placement files are attached here too.
-
-          Manuals: [English (MANUAL_EN.md)](${repo_url}/blob/${tag}/MANUAL_EN.md) · [Russian (MANUAL_RU.md)](${repo_url}/blob/${tag}/MANUAL_RU.md)
-
-          Video: https://www.youtube.com/watch?v=_y_PgrNg_jc
+          Flying subs with left/right pickups (Front left / Front right, for example KS28) are placed as a front and rear point, each with its own motor load.
           EOF
 
           # Underscores stay in the download name. The label is the same string.
@@ -162,8 +157,8 @@ jobs:
           title = sys.argv[2]
           expected = [
               "HoistPoint.dwg",
-              "Pick-up_point_extractor_v1.0.dmg",
-              "Pick-up_point_extractor_v1.0.exe",
+              "Pick-up_point_extractor_v1.0.1.dmg",
+              "Pick-up_point_extractor_v1.0.1.exe",
               "PlaceArrayCalcHoists.lsp",
               "PlaceArrayCalcHoistsV3.py",
               "Sound_Hoist_Class.vwx",

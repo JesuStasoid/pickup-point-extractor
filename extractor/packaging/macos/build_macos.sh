@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build "Pick-up point extractor.app" and "Pick-up_point_extractor_v1.0.dmg".
+# Build "Pick-up point extractor.app" and "Pick-up_point_extractor_v1.0.1.dmg".
 #
 # One universal2 app covers Apple Silicon and Intel. python.org's universal2
 # installer ships Tcl/Tk 8.6, which is what actually draws on current macOS
@@ -176,7 +176,7 @@ if command -v vtool >/dev/null 2>&1; then
 fi
 echo "LSMinimumSystemVersion=$(plutil -extract LSMinimumSystemVersion raw "$PL" 2>/dev/null || echo '<unset>')"
 
-DMG="$ROOT/Pick-up_point_extractor_v1.0.dmg"
+DMG="$ROOT/Pick-up_point_extractor_v1.0.1.dmg"
 rm -f "$DMG"
 hdiutil create -volname "$NAME" -srcfolder "$APP" -ov -format UDZO "$DMG"
 bytes="$(stat -f%z "$DMG")"
