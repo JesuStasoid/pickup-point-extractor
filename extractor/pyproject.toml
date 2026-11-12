@@ -1,6 +1,6 @@
 [project]
 name = "pickup-point-extractor"
-version = "1.0.1"
+version = "1.0.2"
 description = "Extract flown hoist pick-up points from d&b ArrayCalc projects (.dbpr) and L-Acoustics Soundvision reports (.pdf) to CSV"
 requires-python = ">=3.10"
 dependencies = ["pypdf>=6.0"]

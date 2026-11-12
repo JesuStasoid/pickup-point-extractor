@@ -12,8 +12,8 @@
 
 | Файл | Назначение |
 |---|---|
-| `Pick-up_point_extractor_v1.0.1.exe` | Экстрактор для Windows |
-| `Pick-up_point_extractor_v1.0.1.dmg` | Экстрактор для macOS (Apple Silicon и Intel, macOS 11+) |
+| `Pick-up_point_extractor_v1.0.2.exe` | Экстрактор для Windows |
+| `Pick-up_point_extractor_v1.0.2.dmg` | Экстрактор для macOS (Apple Silicon и Intel, macOS 11+) |
 | `PlaceArrayCalcHoistsV3.py` | Скрипт расстановки для Vectorworks 2026 |
 | `Sound_Hoist_Class.vwx` | Стиль data tag «Sound_Hoist» для скрипта Vectorworks |
 | `PlaceArrayCalcHoists.lsp` | Скрипт расстановки для AutoCAD, Windows и Mac (команды `ACHOISTS`, `ACHOISTS_CLI`) |
@@ -57,7 +57,8 @@
 При выходе новой версии вставьте новый код в ту же команду (**Edit Script…**). Одна лишь замена файла `.py` ничего не изменит.
 
 ### Работа
-Запустите команду, выберите CSV, задайте параметры и нажмите **Place**:
+Запустите команду. Каждый запуск спрашивает CSV: окно выбора открывается в папке чертежа. Задайте параметры и нажмите **Place**. В одном чертеже скрипт можно запускать отдельно для каждой площадки или CSV; не отмечайте **Replace hoists + tags from earlier runs**, чтобы оставить уже расставленные моторы.
+
 - **Data tag style:** по умолчанию `Sound_Hoist`.
 - **Quarter colour:** цвет класса `Hoist_Quarters`.
 - **Lift tags to hoist height:** поднимать подписи на высоту мотора (включено по умолчанию).

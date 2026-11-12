@@ -2,7 +2,7 @@
 # the Apple Silicon runner from python.org's fat Python + Tcl/Tk 8.6.
 # macos-26 is pinned: macos-latest may move to macOS 27, where python.org
 # warns that Tk file dialogs hang.
-# Release publishing is release.yml (tag v1.0.1). This file only builds the two apps.
+# Release publishing is release.yml (tag v1.0.2). This file only builds the two apps.
 name: Build
 
 on:
@@ -73,7 +73,7 @@ jobs:
         working-directory: extractor
         run: |
           set -euo pipefail
-          dmg="Pick-up_point_extractor_v1.0.1.dmg"
+          dmg="Pick-up_point_extractor_v1.0.2.dmg"
           mnt="$(mktemp -d)"
           hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mnt"
           cleanup() { hdiutil detach "$mnt" >/dev/null 2>&1 || hdiutil detach "$mnt" -force >/dev/null 2>&1 || true; }
@@ -94,8 +94,8 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: Pick-up_point_extractor_v1.0.1.dmg
-          path: "extractor/Pick-up_point_extractor_v1.0.1.dmg"
+          name: Pick-up_point_extractor_v1.0.2.dmg
+          path: "extractor/Pick-up_point_extractor_v1.0.2.dmg"
           if-no-files-found: error
           compression-level: 0
 
@@ -136,8 +136,8 @@ jobs:
         working-directory: extractor
         shell: pwsh
         run: |
-          python tests/smoke_frozen.py --exe ".\Pick-up_point_extractor_v1.0.1.exe"
-          $item = Get-Item ".\Pick-up_point_extractor_v1.0.1.exe"
+          python tests/smoke_frozen.py --exe ".\Pick-up_point_extractor_v1.0.2.exe"
+          $item = Get-Item ".\Pick-up_point_extractor_v1.0.2.exe"
           "exe bytes: $($item.Length)"
           @"
           ### Windows
@@ -147,7 +147,7 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: Pick-up_point_extractor_v1.0.1.exe
-          path: "extractor/Pick-up_point_extractor_v1.0.1.exe"
+          name: Pick-up_point_extractor_v1.0.2.exe
+          path: "extractor/Pick-up_point_extractor_v1.0.2.exe"
           if-no-files-found: error
           compression-level: 0
