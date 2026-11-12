@@ -8,7 +8,7 @@
 param([Parameter(Mandatory)][string]$Exe, [string]$OneDirExe, [Parameter(Mandatory)][string]$DemoFile,
       [string]$Shot, [int]$Runs = 7)
 $ErrorActionPreference = "Stop"
-$Title = "Pick-up point extractor v1.0.1"
+$Title = "Pick-up point extractor v1.0.2"
 Add-Type @"
 using System; using System.Runtime.InteropServices; using System.Text;
 public static class W {

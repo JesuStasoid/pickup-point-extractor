@@ -12,8 +12,8 @@ The workflow:
 
 | File | Used for |
 |---|---|
-| `Pick-up_point_extractor_v1.0.1.exe` | Windows extractor |
-| `Pick-up_point_extractor_v1.0.1.dmg` | macOS extractor (Apple Silicon and Intel, macOS 11+) |
+| `Pick-up_point_extractor_v1.0.2.exe` | Windows extractor |
+| `Pick-up_point_extractor_v1.0.2.dmg` | macOS extractor (Apple Silicon and Intel, macOS 11+) |
 | `PlaceArrayCalcHoistsV3.py` | Vectorworks 2026 placement script |
 | `Sound_Hoist_Class.vwx` | Vectorworks data tag style "Sound_Hoist" used by the script |
 | `PlaceArrayCalcHoists.lsp` | AutoCAD placement script for Windows and Mac (commands `ACHOISTS`, `ACHOISTS_CLI`) |
@@ -57,7 +57,8 @@ Then, in the Resource Manager, right-click **User Libraries** and choose **Refre
 When a new version of the script comes out, paste the new code into the same command (**Edit Script…**). Updating the `.py` file alone does nothing.
 
 ### Use it
-Run the command, pick the CSV, choose the options and click **Place**:
+Run the command. It asks for the CSV every time, opening the file browser in the drawing's folder. Choose the options and click **Place**. You can run it once per venue or CSV in the same drawing; leave **Replace hoists + tags from earlier runs** unticked to keep the hoists already placed.
+
 - **Data tag style:** default `Sound_Hoist`.
 - **Quarter colour:** sets the class `Hoist_Quarters`.
 - **Lift tags to hoist height:** on by default.

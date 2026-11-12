@@ -286,39 +286,26 @@ def _file_dialog_result(ok):
 
 
 def choose_csv_path():
-    doc = vcall("GetFName", default="") or ""
+    # Always ask which CSV to use, so one drawing can take several venues /
+    # speaker systems from different CSV files. The file browser opens in the
+    # drawing's folder when the drawing has been saved.
     folder = ""
     full = vcall("GetFPathName", default="", quiet=True)
     if full:
         folder = os.path.dirname(full)
+    return pick_csv_manually(folder)
 
-    candidates = []
+
+def pick_csv_manually(folder=""):
+    prompt = "ArrayCalc / Soundvision hoist CSV"
+    ok = None
     if folder:
-        for name in (
-            "hoist_pick_points_flown.csv",
-            "hoist_pick_points.csv",
-            os.path.splitext(os.path.basename(doc))[0] + "_hoist_picks.csv",
-        ):
-            candidates.append(os.path.join(folder, name))
-        try:
-            for fn in sorted(os.listdir(folder)):
-                low = fn.lower()
-                if low.endswith("_hoist_picks.csv") or low == "hoist_pick_points_flown.csv":
-                    p = os.path.join(folder, fn)
-                    if p not in candidates:
-                        candidates.append(p)
-        except Exception:
-            pass
-
-    for p in candidates:
-        if os.path.isfile(p):
-            return p
-    return pick_csv_manually()
-
-
-def pick_csv_manually():
-    ok = vcall("GetFileN", "ArrayCalc / Soundvision hoist CSV", "", "csv", default=None)
-    return _file_dialog_result(ok)
+        ok = vcall("GetFileN", prompt, folder, "csv", default=None, quiet=True)
+    path = _file_dialog_result(ok) if ok is not None else None
+    if ok is None:
+        ok = vcall("GetFileN", prompt, "", "csv", default=None)
+        path = _file_dialog_result(ok)
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -1147,8 +1134,10 @@ def write_param_dump(csv_path, sizer):
 def run():
     del ERRORS[:]
     csv_path = choose_csv_path()
-    if not csv_path or not os.path.isfile(csv_path):
-        vcall("AlrtDialog", "No hoist CSV found. Run the extractor first, or pick a CSV.")
+    if not csv_path:
+        return  # file browser cancelled
+    if not os.path.isfile(csv_path):
+        vcall("AlrtDialog", "CSV not found:\n" + str(csv_path))
         return
     try:
         rows = read_csv(csv_path)
